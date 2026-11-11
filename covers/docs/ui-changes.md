@@ -35,14 +35,14 @@ The backing track goes through its own gain node. `Transport.setBackingVolume(v)
 (1 = as mixed). The page shows a "Music" slider (0 to 1.25) in the footer when the show has a
 backing file. The idea: a viewer can turn down the instrumental to hear the synthetic voices.
 
+`audio` also sets the show's length. When there is a backing file, `audio` holds the voices only,
+padded with silence to the song's length. `build_show.sh` and `build_ab.py` make it that way.
+
 ## Cover picker
 
 If the site has `shows/index.json` (`[{"id": "grinch", "title": "You're a Mean One, Mr. Grinch"}, ...]`)
 with two or more entries, the top right of the page shows a list of them. Picking one opens
 `?show=<id>`. Write the file by hand next to the show folders; it is not built.
-
-`audio` also sets the show's length. When there is a backing file, `audio` holds the voices only,
-padded with silence to the song's length. `build_show.sh` and `build_ab.py` make it that way.
 
 ## Duet page
 
