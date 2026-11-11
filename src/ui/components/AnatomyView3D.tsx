@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { Anatomy3D } from "../render/anatomy3d.ts";
+import { Anatomy3D, type Look } from "../render/anatomy3d.ts";
 import { Petting } from "../render/petting.ts";
 import { drawReadouts } from "../render/readouts.ts";
 import { Glow, label } from "../render/vector.ts";
@@ -36,6 +36,8 @@ export interface HeadFeed {
   maxDpr?: number;
   /** which way the head turns to show its face (see Anatomy3D.facing) */
   facing?: 1 | -1;
+  /** a costume over the head (a show's `voices[i].look`) */
+  look?: Look;
 }
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -76,6 +78,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     const r = new Anatomy3D();
     r.centred = !readoutsRef.current;
     r.facing = feedRef.current?.facing ?? 1;
+    r.look = feedRef.current?.look;
     const glow = new Glow();
     const camera = r.camera;
     const controls = new OrbitControls(camera, canvas);
@@ -160,14 +163,20 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       gl.setSize(Math.max(1, w), Math.max(1, h), false);
       r.resize(Math.max(1, w), Math.max(1, h));
     };
-    const ro = new ResizeObserver(fit);
+    // Resizing a canvas blanks it, and the observer runs after the frame's own draw: draw again
+    // now, or a pane whose size is being animated shows nothing until the animation ends.
+    const ro = new ResizeObserver(() => {
+      fit();
+      if (drawn) frame(performance.now());
+    });
     ro.observe(wrap);
     let raf = 0;
     let last = performance.now();
     let fTick = 0;
     let formants: number[] = [];
     let epoch = -1;
-    const loop = (now: number) => {
+    let drawn = false;
+    const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       // the face's expression keeps real time (a held note lasts as long at a low frame rate)
       const elapsed = Math.min(0.5, (now - last) / 1000);
@@ -242,6 +251,10 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
         pet.draw(ctx, r.facing, crown.cmPx);
         glow.apply(canvas, ctx, dpr);
       }
+      drawn = true;
+    };
+    const loop = (now: number) => {
+      frame(now);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

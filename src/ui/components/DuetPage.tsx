@@ -12,7 +12,8 @@
  *
  * Optional: `bpm` and `downbeat` (s, a bar's first beat) nod the heads on the beat; a voice's
  * `melody` (the melody file it was rendered from) writes its words at its mouth, and the show's
- * `spell` ({"owr": "our"}) writes a syllable spelled for the dictionary as it should read.
+ * `spell` ({"owr": "our"}) writes a syllable spelled for the dictionary as it should read;
+ * `video` (a silent picture on the mix's clock, e.g. the original's lyric video) plays in a corner.
  */
 import { useEffect, useRef, useState } from "react";
 import { AnatomyView3D, type HeadFeed } from "./AnatomyView3D.tsx";
@@ -23,6 +24,7 @@ import { getModel } from "../useModel.ts";
 import { VoiceModel } from "../analysis.ts";
 import { bodyLabel } from "../body.ts";
 import type { ViewFlags } from "../render/anatomy.ts";
+import type { Look } from "../render/anatomy3d.ts";
 import { mouthWords } from "../mouthWords.ts";
 import { V } from "../colors.ts";
 import { g2p } from "../speech.ts";
@@ -33,15 +35,19 @@ import type { OverlayFn } from "./AnatomyView.tsx";
 interface ShowFile {
   title: string;
   audio: string;
+  video?: string;
+  /** the backing track apart from `audio` (then the voices alone), on the same clock: gets a volume slider */
+  backing?: string;
   bpm?: number;
   downbeat?: number;
   spell?: Record<string, string>;
-  voices: { name: string; tele: string; melody?: string }[];
+  /** `enter` (s): the head stays off screen until then (a surprise), the others sharing the width */
+  voices: { name: string; tele: string; melody?: string; look?: Look; enter?: number }[];
 }
 
 interface Loaded {
   show: ShowFile;
-  voices: { name: string; track: TeleTrack; words: SungWords | null }[];
+  voices: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; enter: number }[];
 }
 
 /** the heads as the face screen shows them by default, less the measurement labels */
@@ -62,6 +68,7 @@ export function DuetPage(props: { id: string }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
+  const [backingVol, setBackingVol] = useState(1);
 
   useEffect(() => {
     const t = new Transport();
@@ -76,7 +83,7 @@ export function DuetPage(props: { id: string }) {
     (async () => {
       const show = (await (await fetchOk(base + "show.json")).json()) as ShowFile;
       if (!show.voices?.length || !show.audio) throw new Error("show.json needs audio and voices");
-      const [audio, ...teles] = await Promise.all([fetchOk(base + show.audio).then((r) => r.arrayBuffer()), ...show.voices.map((v) => fetchOk(base + v.tele).then((r) => r.arrayBuffer()))]);
+      const [audio, backing, ...teles] = await Promise.all([fetchOk(base + show.audio).then((r) => r.arrayBuffer()), show.backing ? fetchOk(base + show.backing).then((r) => r.arrayBuffer()) : undefined, ...show.voices.map((v) => fetchOk(base + v.tele).then((r) => r.arrayBuffer()))]);
       // the words: syllables as the CLI splits them (the pronouncing dictionary first, as it does)
       const melodies = await Promise.all(show.voices.map((v) => (v.melody ? fetchOk(base + v.melody).then((r) => r.json() as Promise<Melody>) : null)));
       if (melodies.some(Boolean)) await g2p.load().catch(() => {});
@@ -89,8 +96,8 @@ export function DuetPage(props: { id: string }) {
           return null;
         }
       });
-      const voices = show.voices.map((v, i) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i] }));
-      await transport.load(audio);
+      const voices = show.voices.map((v, i) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], look: v.look, enter: v.enter ?? 0 }));
+      await transport.load(audio, backing);
       if (live) setLoaded({ show, voices });
     })().catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -102,7 +109,7 @@ export function DuetPage(props: { id: string }) {
   useEffect(() => {
     if (!transport) return;
     const off = transport.subscribe(() => setTick((n) => n + 1));
-    const id = setInterval(() => transport.isPlaying && setTick((n) => n + 1), 250);
+    const id = setInterval(() => transport.isPlaying && setTick((n) => n + 1), 100);
     return () => {
       off();
       clearInterval(id);
@@ -123,8 +130,9 @@ export function DuetPage(props: { id: string }) {
         <span className="wordmark">Chimera</span>
         <span className="duet-title">{title}</span>
       </header>
-      <main className="duet-heads" style={{ "--voices": loaded?.voices.length ?? 2 } as React.CSSProperties}>
-        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} show={loaded.show} transport={transport} facing={i > 0 && i === loaded.voices.length - 1 ? -1 : 1} />) : <p className="duet-msg">Loading the song…</p>}
+      <main className={loaded?.voices.some((v) => v.enter > 0 && st.time >= v.enter) ? "duet-heads split" : "duet-heads"} style={{ "--voices": loaded?.voices.filter((v) => st.time >= v.enter).length || 1 } as React.CSSProperties}>
+        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={st.time < v.enter ? " waiting" : v.enter > 0 ? " entering" : ""} show={loaded.show} transport={transport} facing={i > 0 && i === loaded.voices.length - 1 ? -1 : 1} />) : <p className="duet-msg">Loading the song…</p>}
+        {loaded?.show.video && transport && <CornerVideo src={base + loaded.show.video} transport={transport} />}
       </main>
       <footer className="duet-bar">
         <button className="primary large" disabled={!loaded} onClick={() => (st.playing ? transport?.pause() : transport?.play())}>
@@ -144,13 +152,54 @@ export function DuetPage(props: { id: string }) {
           onChange={(e) => transport?.seek(Number(e.target.value))}
           style={{ "--pos": `${st.duration ? (100 * st.time) / st.duration : 0}%` } as React.CSSProperties}
         />
+        {loaded?.show.backing && (
+          <label className="duet-backing">
+            Backing
+            <input
+              type="range"
+              min={0}
+              max={1.25}
+              step={0.05}
+              value={backingVol}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setBackingVol(v);
+                transport?.setBackingVolume(v);
+              }}
+              style={{ "--pos": `${(100 * backingVol) / 1.25}%` } as React.CSSProperties}
+            />
+          </label>
+        )}
       </footer>
     </div>
   );
 }
 
+/** the show's video in a corner of the heads, kept at the transport's playhead (the sound is the mix's) */
+function CornerVideo(props: { src: string; transport: Transport }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const sync = () => {
+      const v = ref.current;
+      if (!v) return;
+      const t = props.transport.time(), playing = props.transport.isPlaying;
+      // a picture a little off is fine; chasing every frame's drift would stutter
+      if (Math.abs(v.currentTime - t) > (playing ? 0.2 : 0.03)) v.currentTime = t;
+      if (playing && v.paused) void v.play().catch(() => {});
+      else if (!playing && !v.paused) v.pause();
+    };
+    const off = props.transport.subscribe(sync);
+    const id = setInterval(sync, 200);
+    return () => {
+      off();
+      clearInterval(id);
+    };
+  }, [props.transport]);
+  return <video ref={ref} className="duet-video" src={props.src} muted playsInline preload="auto" aria-label="The original video" />;
+}
+
 /** one voice's head; the last of several turns to face the others */
-function Head(props: { name: string; track: TeleTrack; words: SungWords | null; show: ShowFile; transport: Transport; facing: 1 | -1 }) {
+function Head(props: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; stage: "" | " waiting" | " entering"; show: ShowFile; transport: Transport; facing: 1 | -1 }) {
   const { track, show, transport, words } = props;
   const feedRef = useRef<HeadFeed | null>(null);
   // the syllable at the mouth, written on the side the face looks to
@@ -168,6 +217,7 @@ function Head(props: { name: string; track: TeleTrack; words: SungWords | null; 
       view: VIEW,
       maxDpr: 1.5,
       facing: props.facing,
+      look: props.look,
       frame: () => {
         const t = transport.time();
         const i = track.indexAt(t);
@@ -179,7 +229,7 @@ function Head(props: { name: string; track: TeleTrack; words: SungWords | null; 
     };
   }
   return (
-    <Screen className="duet-head" focus title={props.name} sub={bodyLabel(track.body)} label={`${props.name} voice, ${bodyLabel(track.body)}, in 3D`}>
+    <Screen className={"duet-head" + props.stage} focus title={props.name} sub={bodyLabel(track.body)} label={`${props.name} voice, ${bodyLabel(track.body)}, in 3D`}>
       <AnatomyView3D feed={feedRef.current} readouts={false} overlay={overlayRef.current} />
     </Screen>
   );

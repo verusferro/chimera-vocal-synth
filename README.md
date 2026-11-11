@@ -5,6 +5,10 @@ airway (lungs, vocal folds or syrinx, a branched vocal tract, lips, nose), not f
 The engine is Rust, compiled to WebAssembly for an AudioWorklet; the same code runs natively
 for tests and the `chimera` CLI.
 
+> **This fork** adds a song-cover workflow: a YouTube link becomes a browser "duet show" with
+> 3D wireframe heads singing the song (CHIMERA or the S.A.M. UTAU voicebank). See
+> [covers/README.md](covers/README.md).
+
 ## Vision & scope
 
 1. **One instrument**: a physically modeled voice (lungs, vocal folds, throat, mouth). No

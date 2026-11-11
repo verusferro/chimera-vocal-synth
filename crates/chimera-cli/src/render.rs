@@ -481,13 +481,16 @@ fn render_tracked(v: &mut HumanVoice, out: &mut [f32], artic: bool, tele: bool) 
 /// A melody from a JSON file: `{"bpm", "lyrics", "notes": [[midi, beats], ...], "vibrato"?}`.
 /// One lyric syllable per sounding note; a note with midi <= 0 is a rest, which splits the
 /// melody into phrases planned separately on one voice.
-/// `render notes <in.json> <out> [body] [--artic tracks.json] [--tele voice.tele]`: `--artic` also
-/// writes the articulators over time (`{"rate", "body", "keys", "frames"}`), to animate a face in
-/// sync; `--tele` writes the voice's whole telemetry over time (see `TeleRecorder`), which the
-/// app's duet page replays on a 3D head.
+/// `render notes <in.json> <out> [body] [--artic tracks.json] [--tele voice.tele] [--syllables s.json]`:
+/// `--artic` also writes the articulators over time (`{"rate", "body", "keys", "frames"}`), to
+/// animate a face in sync; `--tele` writes the voice's whole telemetry over time (see
+/// `TeleRecorder`), which the app's duet page replays on a 3D head; `--syllables` writes each
+/// sounding note with its syllable (`[{"t", "dur", "midi", "syl"}]`, seconds), so another singer
+/// can sing the same syllables on the same beats.
 pub fn notes(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     let mut artic_out: Option<String> = None;
     let mut tele_out: Option<String> = None;
+    let mut syl_out: Option<String> = None;
     let mut rest = Vec::new();
     let mut it = a.iter();
     while let Some(x) = it.next() {
@@ -495,6 +498,8 @@ pub fn notes(ctx: &Ctx, a: &[String]) -> Result<(), String> {
             artic_out = Some(it.next().ok_or("--artic needs a file")?.clone());
         } else if x == "--tele" {
             tele_out = Some(it.next().ok_or("--tele needs a file")?.clone());
+        } else if x == "--syllables" {
+            syl_out = Some(it.next().ok_or("--syllables needs a file")?.clone());
         } else {
             rest.push(x.clone());
         }
@@ -539,12 +544,14 @@ pub fn notes(ctx: &Ctx, a: &[String]) -> Result<(), String> {
         *end = js_max(*end, plan.end);
         phrase.clear();
     };
+    let mut sung = Vec::new();
     for n in &raw {
         if n[0] > 0.0 {
             if phrase.is_empty() {
                 start = t;
             }
             phrase.push(SungNote { midi: n[0], beats: n[1], syl: syl[k].clone() });
+            sung.push(serde_json::json!({"t": t, "dur": n[1] * beat, "midi": n[0], "syl": syl[k]}));
             k += 1;
         } else {
             flush(&mut phrase, start, &mut v, &mut end);
@@ -570,6 +577,10 @@ pub fn notes(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     if let (Some(path), Some(r)) = (&tele_out, rec) {
         std::fs::write(path, r.bytes(body_mix(body_name)?)).map_err(|e| format!("{path}: {e}"))?;
         println!("{path}: {} telemetry frames every {TELE_HOP} samples", r.frames);
+    }
+    if let Some(path) = &syl_out {
+        std::fs::write(path, serde_json::Value::Array(sung).to_string()).map_err(|e| format!("{path}: {e}"))?;
+        println!("{path}: {sounding} syllables");
     }
     Ok(())
 }

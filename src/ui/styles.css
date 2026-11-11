@@ -2810,14 +2810,72 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .duet-heads {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(var(--voices, 2), minmax(0, 1fr));
   gap: 8px;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* the show's video: a small picture over the first head's lower corner, out of the faces' way */
+.duet-video {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: clamp(200px, 24vw, 400px);
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--frame, #133954);
+  background: #000;
+  pointer-events: none;
 }
 
 .duet-head .screen-body {
   min-height: 180px;
+}
+
+/* a head that has not entered yet: off screen at the size it will have, so it is drawn and posed
+   already when it comes in */
+.duet-head.waiting {
+  position: absolute;
+  left: -200vw;
+  top: 0;
+  width: calc((100% - 8px) / 2);
+  height: 100%;
+  visibility: hidden;
+}
+
+/* its entrance: it slides in from the right while the head already there gives up half the
+   width, the two edges moving together.
+   ponytail: written for one head joining one; a third voice needs the widths worked out per count */
+.duet-head.entering {
+  animation: duet-slide-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.duet-heads.split > .duet-head:not(.entering) {
+  animation: duet-make-room 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes duet-slide-in {
+  from {
+    transform: translateX(calc(100% + 8px));
+  }
+}
+
+@keyframes duet-make-room {
+  from {
+    width: calc(200% + 8px);
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duet-head.entering,
+  .duet-heads.split > .duet-head:not(.entering) {
+    animation: none;
+  }
 }
 
 .duet-bar {
@@ -2841,6 +2899,19 @@ input[type="range"]::-moz-range-thumb {
 .duet-bar input[type="range"] {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.duet-backing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+
+.duet-backing input[type="range"] {
+  flex: none;
+  width: 110px;
 }
 
 .duet-msg {

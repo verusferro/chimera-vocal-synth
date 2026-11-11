@@ -27,6 +27,13 @@ import { Beams, Poly } from "./beams3d.ts";
 import { bodyPoint, buildProfile, Gaze, jawAngle, wallX } from "./profile.ts";
 import { faceHandles, type FaceView, type ViewFlags } from "./anatomy.ts";
 import { Expression } from "./expression.ts";
+import type { Costume, HeadFrame } from "./costume.ts";
+import { nikoHead } from "./niko.ts";
+import { v1Head } from "./v1.ts";
+
+/** the costumes a show's voice can wear (`voices[i].look`) */
+const COSTUMES = { niko: nikoHead, v1: v1Head } satisfies Record<string, (h: HeadFrame) => Costume>;
+export type Look = keyof typeof COSTUMES;
 
 type Table = readonly (readonly [number, number])[];
 type V3 = [number, number, number];
@@ -219,6 +226,8 @@ interface Rest {
   chin: Float32Array;
   eyes: V3[];
   eyeR: number;
+  /** a character's head in place of ours (see costume.ts) */
+  costume?: Costume;
 }
 
 /** how much of the jaw's rotation a point of the face's skin follows (rest pose, body cm) */
@@ -307,7 +316,7 @@ const cumulative = (p: Vec[]): number[] => {
 
 // ------------------------------------------------------------------ the rest pose
 
-function buildRest(model: VoiceModel): Rest {
+function buildRest(model: VoiceModel, look?: Look): Rest {
   const t = model.tract;
   const k = t.scale;
   const ph = model.bodyParams.pharynx;
@@ -392,6 +401,9 @@ function buildRest(model: VoiceModel): Rest {
 
   const fixed: Group[] = [];
   const jaw: Group[] = [];
+  // a costume leaves out our bones, brain, nose and ears: these go nowhere
+  const bones: Group[] = look ? [] : fixed;
+  const jawBones: Group[] = look ? [] : jaw;
   const group = (into: Group[], color: string, width: number, alpha: number, fill: (L: Lines) => void, hot = false) => {
     const L = new Lines();
     fill(L);
@@ -408,7 +420,7 @@ function buildRest(model: VoiceModel): Rest {
   };
 
   // ---- ears
-  group(fixed, V.blueDim, 1.05, 0.9, (L) => {
+  group(bones, V.blueDim, 1.05, 0.9, (L) => {
     for (const side of [1, -1]) {
       onSide(L, [[-2.55, 13.4], [-2.85, 14.75], [-3.65, 15.45], [-4.6, 15.25], [-5.2, 14.25], [-5.4, 12.8], [-5.05, 11.3], [-4.55, 10.2], [-3.95, 9.55], [-3.35, 9.65], [-3.0, 10.35]], (i, n) => (0.25 + 1.2 * Math.sin((Math.PI * i) / (n - 1)) ** 1.5) * k, side);
       onSide(L, [[-3.15, 14.3], [-3.95, 14.45], [-4.55, 13.5], [-4.6, 12.1], [-4.15, 11.05]], () => 0.55 * k, side);
@@ -419,7 +431,7 @@ function buildRest(model: VoiceModel): Rest {
     }
   });
   // ---- the nose's sides and wings, so it reads from the front
-  group(fixed, V.blueMid, 1.0, 0.8, (L) => {
+  group(bones, V.blueMid, 1.0, 0.8, (L) => {
     for (const side of [1, -1]) {
       for (let Y = 14.6; Y >= 11.3; Y -= 0.15) {
         const y = By(Y), s = head.at(y);
@@ -434,13 +446,13 @@ function buildRest(model: VoiceModel): Rest {
     }
   });
   // ---- nostrils, under the tip of the nose
-  group(fixed, V.blueMid, 1.0, 0.9, (L) => {
+  group(bones, V.blueMid, 1.0, 0.9, (L) => {
     for (const side of [1, -1]) L.ellipse([8.05 * k, By(10.98), side * 0.62 * k], [0.42 * k, 0.04 * k, 0], [0, 0, 0.26 * k], 16);
   });
 
   // ---- brain: rings and meridians over the 2D outline, the skull and its base stay on the midline
   const brain = new Shape(prof.brain, 0.08 * k, (y, F, Bk) => ({ F, Bk, Fs: F, W: interp(BRAIN_WIDTH, unBy(y)) * k, xw: Bk + (F - Bk) * 0.48, E: 0, wf: 1, pf: 2.3 }));
-  group(fixed, V.blueMid, 0.85, 0.32, (L) => {
+  group(bones, V.blueMid, 0.85, 0.32, (L) => {
     for (let y = brain.y0 + 0.6 * k; y < brain.y1 - 0.15 * k; y += 1.5 * k) {
       const s = brain.at(y);
       if (!s) continue;
@@ -468,7 +480,7 @@ function buildRest(model: VoiceModel): Rest {
   });
 
   // ---- cervical vertebrae: bodies, arches, processes; the spinal cord through them
-  group(fixed, V.blueDim, 0.9, 0.6, (L) => {
+  group(bones, V.blueDim, 0.9, 0.6, (L) => {
     for (let i = 0; i < 9; i++) {
       const y0 = -4.4 + i * 1.75;
       if (y0 > 10.5) break;
@@ -486,7 +498,7 @@ function buildRest(model: VoiceModel): Rest {
       L.p(ax - 0.72 * k, ym, 0).p(ax - 1.8 * k, ym - 0.55 * k, 0).end();
     }
   });
-  group(fixed, V.blueDim, 0.85, 0.5, (L) => {
+  group(bones, V.blueDim, 0.85, 0.5, (L) => {
     const cx = P(-4.9, 0).x;
     for (let y = -4.4; y <= 11.0; y += 1.75) L.ellipse([cx, P(0, y).y, 0], [0.42 * k, 0, 0], [0, 0, 0.6 * k], 16);
     for (const s of [1, -1]) L.p(cx, P(0, -4.6).y, s * 0.6 * k).p(cx, P(0, 11.4).y, s * 0.6 * k).end();
@@ -581,7 +593,7 @@ function buildRest(model: VoiceModel): Rest {
     L.p(...q[q.length - 1]);
     L.end();
   };
-  group(jaw, V.red, 1.25, 0.9, (L) => {
+  group(jawBones, V.red, 1.25, 0.9, (L) => {
     for (const side of [1, -1]) {
       // lower border, then the ramus up to the condyle
       mline(L, [[6.4, 4.6, 0], [5.6, 4.45, 1.5], [4.5, 4.4, 2.6], [3.2, 4.5, 3.5], [1.8, 4.85, 4.15], [0.4, 5.6, 4.6], [-0.55, 6.6, 4.85], [-0.9, 7.6, 4.9], [-1.45, 8.9, 4.95], [-1.9, 9.7, 5.0], [-2.15, 10.2, 5.0]], side);
@@ -591,7 +603,7 @@ function buildRest(model: VoiceModel): Rest {
       L.ellipse(c, [0.45 * k, 0, 0], [0, 0.12 * k, 0.85 * k], 16);
     }
   });
-  group(jaw, V.red, 1.0, 0.55, (L) => {
+  group(jawBones, V.red, 1.0, 0.55, (L) => {
     for (const side of [1, -1]) {
       // the alveolar border along the lower teeth, and the body's height at a few places
       mline(L, [[1.9, 7.2, 3.55], [3.0, 7.15, 3.15], [4.3, 7.1, 2.6], [5.4, 7.05, 1.85], [6.2, 7.05, 1.05], [6.72, 7.15, 0]], side);
@@ -608,7 +620,15 @@ function buildRest(model: VoiceModel): Rest {
   // eyes: the 2D view draws one on the midline; here they sit either side of the nose
   const eyeC = B(6.15, 15.35);
   const center = new THREE.Vector3(0.3 * k, (head.y0 + head.y1) / 2, 0);
-  return { model, head, condyle, lipHalf, center, shell, fixed, jaw, chin, eyes: [[eyeC.x, eyeC.y, 3.15 * k], [eyeC.x, eyeC.y, -3.15 * k]], eyeR: 1.05 * k };
+  const rest: Rest = { model, head, condyle, lipHalf, center, shell, fixed, jaw, chin, eyes: [[eyeC.x, eyeC.y, 3.15 * k], [eyeC.x, eyeC.y, -3.15 * k]], eyeR: 1.05 * k };
+  if (look) {
+    const costume = COSTUMES[look]({ k, By, lip: { x: frame.upperLip[6].x, y: (frame.upperLip[6].y + frame.lowerLip[6].y) / 2 } });
+    fixed.push(...costume.groups);
+    rest.costume = costume;
+    rest.shell = [];
+    center.y = costume.centerY;
+  }
+  return rest;
 }
 
 // ------------------------------------------------------------------ the renderer
@@ -644,6 +664,8 @@ export class Anatomy3D {
   /** which way the turned home view shows the face: 1 to the right, −1 to the left (a duet's
    *  second head, so the two sing towards each other) */
   facing: 1 | -1 = 1;
+  /** a costume over the head (set before the first frame) */
+  look?: Look;
   private clock = 0;
   private readonly gaze = new Gaze();
   /** brows, lids, cheeks and the head's nods, from the voice (the view updates it) */
@@ -704,10 +726,15 @@ export class Anatomy3D {
     const r = this.restFor(model);
     const half = Math.tan((this.camera.fov * Math.PI) / 360);
     // fit the head's height (and its width in a narrow screen) at a male's size, so bodies compare
-    const d = 1.1 * Math.max(15.2 / half, 11 / (half * Math.max(0.3, this.camera.aspect)));
+    let d = 1.1 * Math.max(15.2 / half, 11 / (half * Math.max(0.3, this.camera.aspect)));
+    // a costume's hat, scarf or body reach well past the head: fit them
+    const c = r.costume;
+    if (c) d = Math.max(d, 1.06 * Math.max(c.halfHeight / half, c.halfWidth / (half * Math.max(0.3, this.camera.aspect))));
     const target = r.center.clone();
-    // facing left: the same three-quarter view from the head's other side
-    const az = this.facing > 0 ? 0.62 : Math.PI - 0.62, el = 0.2;
+    // facing left: the same three-quarter view from the head's other side. Costumes turn further
+    // to the camera, to show their faces (our heads stay nearer the side view, where the tract reads)
+    const turn = c ? c.turn : 0.62;
+    const az = this.facing > 0 ? turn : Math.PI - turn, el = 0.2;
     return {
       target,
       home: target.clone().add(new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(d)),
@@ -716,7 +743,7 @@ export class Anatomy3D {
   }
 
   private restFor(model: VoiceModel): Rest {
-    if (!this.rest || this.rest.model !== model) this.rest = buildRest(model);
+    if (!this.rest || this.rest.model !== model) this.rest = buildRest(model, this.look);
     return this.rest;
   }
 
@@ -769,7 +796,7 @@ export class Anatomy3D {
     const dist = this.camera.position.distanceTo(rest.center);
     const fog = this.scene.fog as THREE.Fog;
     fog.near = dist - 3 * k;
-    fog.far = dist + 30 * k;
+    fog.far = dist + (rest.costume?.fogDepth ?? 30 * k);
 
     B.begin();
     const flat = (pts: Vec[], z = 0): Float32Array => {
@@ -816,20 +843,23 @@ export class Anatomy3D {
 
     // ---- the midsagittal section, as the 2D view draws it
     const G = buildProfile(model, f, a);
-    line(G.inset, V.blueDim, 0.9, { alpha: 0.5 });
-    line(G.skull, V.blueDim, 0.9, { close: true, alpha: 0.6 });
-    line(G.brain, V.blueMid, 1.0, { close: true, alpha: 0.75 });
-    line(G.sulcus, V.blueDim, 0.9);
+    if (!rest.costume) {
+      line(G.inset, V.blueDim, 0.9, { alpha: 0.5 });
+      line(G.skull, V.blueDim, 0.9, { close: true, alpha: 0.6 });
+      line(G.brain, V.blueMid, 1.0, { close: true, alpha: 0.75 });
+      line(G.sulcus, V.blueDim, 0.9);
+      line(G.skinLower, V.blue, 1.5);
+      line(G.skinUpper, V.blue, 1.5);
+    }
     line(G.nasal, V.blueMid, 1, { close: true });
     line(G.palOral, V.blueMid, 1.1);
     line(G.palNasal, V.blueMid, 1.1);
-    line(G.skinLower, V.blue, 1.5);
-    line(G.skinUpper, V.blue, 1.5);
     line(G.outerWall, V.blue, 1.4, { hot: true });
     line(f.inner, V.blue, 1.3, { alpha: 0.9 });
     line(G.glottisWall, V.blue, 1.2, { alpha: 0.8 });
 
-    this.eyes(rest, dt);
+    if (rest.costume) this.costumeLive(rest.costume, tele, dt);
+    else this.eyes(rest, dt);
     this.airway(model, f, tele, view, k);
     this.velum(f, k);
     this.epiglottis(f, k, artCut);
@@ -839,6 +869,7 @@ export class Anatomy3D {
     const soft = (v: Vec[], it: number) => flat(chaikin(v.map((p) => [p.x, p.y] as Pt), it).map(([x, y]) => ({ x, y })));
     const upperLip = soft(f.upperLip, 2), lowerLip = soft(f.lowerLip, 2);
     const mouth = this.lips(rest, model, f, a, phi);
+    if (rest.costume) this.costumeFace(rest.costume, mouth, k);
     const chin = rest.chin;
     const chinNow = new Float32Array(chin.length);
     for (let i = 0; i < chin.length; i += 3) {
@@ -850,7 +881,8 @@ export class Anatomy3D {
     // afterglow: where the tongue, jaw and lips were a moment ago
     if (tele && this.clock - this.lastEcho >= 0.028) {
       this.lastEcho = this.clock;
-      const lines = [{ a: tongueOutline, color: V.green }, { a: chinNow, color: V.red }, { a: upperLip, color: V.pink }, { a: lowerLip, color: V.pink }];
+      const lines = [{ a: tongueOutline, color: V.green }];
+      if (!rest.costume) lines.push({ a: upperLip, color: V.pink }, { a: lowerLip, color: V.pink }, { a: chinNow, color: V.red });
       if (mouth) lines.push({ a: mouth, color: V.pink });
       this.echoes.push({ t: this.clock, lines });
       while (this.echoes.length && this.clock - this.echoes[0].t > 0.12) this.echoes.shift();
@@ -864,10 +896,13 @@ export class Anatomy3D {
     }
 
     this.tongue(f, a, k);
-    B.line(chinNow, chinNow.length / 3, V.red, 1.5, { hot: true, alpha: artCut });
+    if (!rest.costume) B.line(chinNow, chinNow.length / 3, V.red, 1.5, { hot: true, alpha: artCut });
     B.line(tongueOutline, f.tongue.length, V.green, 1.6, { hot: true, alpha: artCut });
-    B.line(upperLip, upperLip.length / 3, V.pink, 1.5, { hot: true, alpha: artCut });
-    B.line(lowerLip, lowerLip.length / 3, V.pink, 1.5, { hot: true, alpha: artCut });
+    // a costume's mouth is only its opening on the face (the lips' profile is ours)
+    if (!rest.costume) {
+      B.line(upperLip, upperLip.length / 3, V.pink, 1.5, { hot: true, alpha: artCut });
+      B.line(lowerLip, lowerLip.length / 3, V.pink, 1.5, { hot: true, alpha: artCut });
+    }
     line(chaikin(f.velum.map((p) => [p.x, p.y] as Pt), 3).map(([x, y]) => ({ x, y })), V.white, 1.25, { alpha: 0.92 }, artCut);
 
     if (view.particles && tele) this.drawParticles(model, f, tele, dt);
@@ -962,6 +997,42 @@ export class Anatomy3D {
     }
   }
 
+  /**
+   * The costume's face mesh, less what lies inside the open mouth (`mouth`: the opening's outline
+   * from `lips`, its upper edge from one corner to the other and then the lower edge back).
+   */
+  private costumeFace(c: Costume, mouth: Float32Array | null, k: number): void {
+    const n = mouth ? mouth.length / 6 : 0; // steps along each edge (n + 1 points above, n − 1 below)
+    const half = mouth ? -mouth[2] : 0, pad = 0.12 * k;
+    const inside = (y: number, z: number): boolean => {
+      if (!mouth || Math.abs(z) >= half) return false;
+      const i = Math.max(1, Math.min(n - 1, Math.round(((z + half) / (2 * half)) * n)));
+      return y < mouth[3 * i + 1] + pad && y > mouth[3 * (2 * n - i) + 1] - pad;
+    };
+    const P = this.tmp;
+    for (const g of c.face) {
+      for (const l of g.lines) {
+        P.reset();
+        for (let i = 0; i < l.length; i += 3) {
+          if (l[i] > 0 && inside(l[i + 1], l[i + 2])) {
+            this.beams.poly(P, g.color, g.width, { alpha: g.alpha, hot: g.hot });
+            P.reset();
+          } else P.p(l[i], l[i + 1], l[i + 2]);
+        }
+        this.beams.poly(P, g.color, g.width, { alpha: g.alpha, hot: g.hot });
+      }
+    }
+  }
+
+  /** the costume's moving parts: eyes looking about and blinking with the same gaze and lids, lights with the voice */
+  private costumeLive(c: Costume, tele: TelemetryMessage | null, dt: number): void {
+    const g = this.gaze, e = this.face;
+    g.update(this.clock, dt);
+    const cam = this.eye;
+    const groups = c.live({ cam: [cam.x, cam.y, cam.z], yaw: g.yaw, pitch: g.pitch + 1.3 * e.lookUp, lid: e.lid, wide: Math.max(0, e.brow), level: tele?.t.outRms ?? 0 });
+    for (const gr of groups) for (const l of gr.lines) this.beams.line(l, l.length / 3, gr.color, gr.width, { alpha: gr.alpha, hot: gr.hot });
+  }
+
   // ------------------------------------------------------------------ the lips
   /**
    * The lips as a patch over the mouth: the engine's midline outlines swept sideways. The opening's
@@ -1014,7 +1085,7 @@ export class Anatomy3D {
       return P;
     };
     const skinRows = [0.66, 0.88];
-    for (const upper of [true, false]) {
+    for (const upper of rest.costume ? [] : [true, false]) {
       for (const t of skinRows) B.poly(row(upper, () => t, -Wl, Wl, 24), V.blueDim, 0.85, { alpha: 0.42 });
       for (const z of [-0.8, -0.5, 0.5, 0.8].map((v) => v * Wl)) {
         P.reset();
@@ -1032,14 +1103,20 @@ export class Anatomy3D {
       B.poly(row(upper, (z) => 0.45 * border(z), -Wv, Wv, 28), V.pink, 1.0, { alpha: 0.45 });
     }
     // where the lips meet beyond the corners
-    for (const s of [1, -1]) B.poly(row(true, () => 0, s * Wm, s * Wl, 6), V.pink, 1.0, { alpha: 0.6 });
+    if (!rest.costume) for (const s of [1, -1]) B.poly(row(true, () => 0, s * Wm, s * Wl, 6), V.pink, 1.0, { alpha: 0.6 });
     // the opening: are the lips apart in the engine's frame (lo is in the jaw's rest pose)
     const open = f.upperLip[6].y - f.lowerLip[6].y > 0.02 * k;
     const n = 24;
     P.reset();
-    for (let i = 0; i <= n; i++) P.p(...pt(true, 0, -Wm + (2 * Wm * i) / n));
-    if (open) for (let i = n - 1; i > 0; i--) P.p(...pt(false, 0, -Wm + (2 * Wm * i) / n));
-    B.poly(P, V.pink, 2.1, { hot: true, close: open });
+    // a costume's mouth lies on its face (our lips stand out from ours)
+    const edge = (upper: boolean, i: number) => {
+      const q = pt(upper, 0, -Wm + (2 * Wm * i) / n);
+      if (rest.costume) q[0] = rest.costume.faceX(q[1], q[2]) + 0.05 * k;
+      P.p(...q);
+    };
+    for (let i = 0; i <= n; i++) edge(true, i);
+    if (open) for (let i = n - 1; i > 0; i--) edge(false, i);
+    B.poly(P, rest.costume?.mouth ?? V.pink, rest.costume ? 1.6 : 2.1, { hot: true, close: open });
     return open ? P.a.slice(0, P.n * 3) : null;
   }
 

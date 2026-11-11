@@ -15,6 +15,10 @@ export type TransportState = { playing: boolean; time: number; duration: number;
 export class Transport {
   readonly ctx: AudioContext;
   private buffer: AudioBuffer | null = null;
+  /** a second track on the same clock with its own volume (a show's backing track), if any */
+  private backing: AudioBuffer | null = null;
+  private backingSrc: AudioBufferSourceNode | null = null;
+  private backingGain: GainNode | null = null;
   private src: AudioBufferSourceNode | null = null;
   private offset = 0;
   private startedAt = 0;
@@ -36,8 +40,13 @@ export class Transport {
     };
   }
 
-  async load(data: ArrayBuffer): Promise<void> {
+  async load(data: ArrayBuffer, backing?: ArrayBuffer): Promise<void> {
     this.buffer = await this.ctx.decodeAudioData(data);
+    if (backing) {
+      this.backing = await this.ctx.decodeAudioData(backing);
+      this.backingGain = this.ctx.createGain();
+      this.backingGain.connect(this.ctx.destination);
+    }
     this.emit();
   }
 
@@ -127,12 +136,27 @@ export class Transport {
     this.rendered = false;
     this.startedAt = this.ctx.currentTime;
     src.start(this.startedAt, this.offset);
+    if (this.backing && this.backingGain && this.offset < this.backing.duration) {
+      const b = this.ctx.createBufferSource();
+      b.buffer = this.backing;
+      b.connect(this.backingGain);
+      b.start(this.startedAt, this.offset);
+      this.backingSrc = b;
+    }
   }
 
   private stopSource(): void {
-    const src = this.src;
-    this.src = null;
+    const src = this.src, b = this.backingSrc;
+    this.src = this.backingSrc = null;
     this.rendered = false;
+    if (b) {
+      try {
+        b.stop();
+      } catch {
+        // never started
+      }
+      b.disconnect();
+    }
     if (!src) return;
     src.onended = null;
     try {
@@ -141,6 +165,11 @@ export class Transport {
       // never started (the context was closed)
     }
     src.disconnect();
+  }
+
+  /** the backing track's volume (1 = as mixed) */
+  setBackingVolume(v: number): void {
+    if (this.backingGain) this.backingGain.gain.value = v;
   }
 
   /** the context time being heard now */
