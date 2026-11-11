@@ -45,7 +45,8 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
 - **Corner video.** If `video` is set, a muted `<video>` plays in the lower left corner over the
   first head. A small component (`CornerVideo`) keeps it on the transport's playhead. When playing,
   it only seeks if the picture is more than 0.2 s off. When paused, it seeks at 0.03 s. Chasing
-  every frame of drift would stutter. The video has no sound: the sound is the mix.
+  every frame of drift would stutter. The video has no sound: the sound is the mix. A **Hide
+  video** button in the bottom bar takes it off and puts it back.
 - **Late heads (`enter`).** A voice with `enter: 179` stays off screen until second 179. Then it
   slides in from the right, and the head already there gives up half the width. The CSS classes
   `.waiting` and `.entering` do this. A waiting head is drawn off screen at its final size, so it

@@ -2,9 +2,9 @@
 import os, sys, json; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hfa import *  # also gives WORK and VENDOR
 H = f'{WORK}/hfa'
-# 1) coarse regions (voice activity from stem; lines assigned in order: 8 | 16 | 8 | 16)
-regions = [('R1', 38.8, 66.4, range(0,8)), ('R2', 68.9, 112.9, range(8,24)),
-           ('R3', 128.9, 153.6, range(24,32)), ('R4', 159.0, 202.3, range(32,48))]
+# 1) coarse regions, by hand from the stem's voice activity: WORK/hfa/regions.json holds
+#    [[name, start_s, end_s, first_line, last_line + 1], ...] (lines 0-based, in lyrics.txt order)
+regions = [(n, a, b, range(l0, l1)) for n, a, b, l0, l1 in json.load(open(f'{H}/regions.json'))]
 make_segments(regions, f'{H}/pass1'); run(f'{H}/pass1')
 w1 = read(f'{H}/pass1', regions)
 # 2) line boundaries from pass 1, snapped to lowest-energy frame within +-0.2 s
@@ -31,16 +31,15 @@ make_segments(segs, f'{H}/segments'); run(f'{H}/segments')
 w2 = read(f'{H}/segments', segs)
 json.dump([{k: w[k] for k in ('word','start','end','phones')} | {'line': w['line']+1, 'seg': w['seg']} for w in w2], open(f'{H}/words.json','w'), indent=1)
 # 3) table + agreement check vs pass 1
-p1 = {(w['line'], i): w for l in range(48) for i, w in enumerate([x for x in w1 if x['line']==l])}
-p2 = {(w['line'], i): w for l in range(48) for i, w in enumerate([x for x in w2 if x['line']==l])}
+p1 = {(w['line'], i): w for l in range(len(LINES)) for i, w in enumerate([x for x in w1 if x['line']==l])}
+p2 = {(w['line'], i): w for l in range(len(LINES)) for i, w in enumerate([x for x in w2 if x['line']==l])}
 rows = []
 for n, t0, t1, g in segs:
     keys = [k for k in p2 if k[0] in g]
     d = max(abs(p2[k]['start']-p1[k]['start']) for k in keys) if keys and all(k in p1 for k in keys) else None
     mx = max(p2[k]['end']-p2[k]['start'] for k in keys)
     rows.append({'seg': n, 'start': t0, 'end': t1, 'dur': round(t1-t0,2), 'lines': [l+1 for l in g],
-                 'max_pass1_vs_pass2_start_diff_s': None if d is None else round(d,2), 'longest_word_s': round(mx,2),
-                 'second_voice': t1 > 170})
+                 'max_pass1_vs_pass2_start_diff_s': None if d is None else round(d,2), 'longest_word_s': round(mx,2)})
 json.dump(rows, open(f'{H}/segments.json','w'), indent=1)
 for r in rows: print(r)
 print(len(w2), 'words')

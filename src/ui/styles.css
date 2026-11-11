@@ -2885,6 +2885,11 @@ input[type="range"]::-moz-range-thumb {
   min-width: 0;
 }
 
+.duet-bar > button {
+  flex: none;
+  white-space: nowrap;
+}
+
 .duet-bar button.primary.large {
   flex: none;
   min-width: 96px;

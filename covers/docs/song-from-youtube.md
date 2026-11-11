@@ -187,15 +187,13 @@ It writes `covers/work/hfa/words.json` (every word with its phones, times on the
 It prints, for each segment, how far pass 2 moved the word starts compared with pass 1.
 A large number means a bad region. Fix the regions and run again.
 
-Edit these lines at the top of `final.py` for a new song:
+Write the regions for your song in `covers/work/hfa/regions.json`:
 
-```python
-regions = [('R1', 38.8, 66.4, range(0,8)), ('R2', 68.9, 112.9, range(8,24)),
-           ('R3', 128.9, 153.6, range(24,32)), ('R4', 159.0, 202.3, range(32,48))]
+```json
+[["R1", 38.8, 66.4, 0, 8], ["R2", 68.9, 112.9, 8, 24], ["R3", 128.9, 153.6, 24, 32], ["R4", 159.0, 202.3, 32, 48]]
 ```
 
-Each entry is `(name, start_s, end_s, line_indexes)`. The line indexes are 0-based, in the order of `lyrics.txt`.
-Also change `range(48)` (the number of lines, used in the comparison table) and `t1 > 170` (the table's flag for "second voice").
+Each entry is `[name, start_s, end_s, first_line, last_line + 1]`. The lines are 0-based, in the order of `lyrics.txt`.
 
 Run it with the HubertFA venv Python, not the main venv.
 HubertFA needs its own old libraries (`numpy 1.26`, `librosa<0.10`).
@@ -343,10 +341,37 @@ To record the show as a video: [record-and-host.md](record-and-host.md).
 3. Run GAME (step 3).
 4. Write `lyrics.txt` (step 4).
 5. Measure BPM and T0. Set them in `align.py`, `melody.py`, `f0_grid.py`, `second_probe.py` and `build_show.sh`.
-6. Set `regions` in `final.py`. Run HubertFA (step 5).
+6. Write `covers/work/hfa/regions.json`. Run HubertFA (step 5).
 7. Run `align.py`, read the output, and write the `FIX`, `CHORUS2`, `OUTRO` and `HARMONY` tables in `make_song.py` for your lines. Our tables are for our song: delete them first, then add yours. Expect the first runs to stop with an error until the syllable and note counts agree.
 8. Pick bodies and run `build_show.sh` (steps 8 and 9).
 9. Listen, fix the tables, run again.
+
+## The short way: `cover.py`
+
+For a song with clean lines (no hand tables needed), `covers/song/cover.py` does steps 6 to 9 from
+one config file. Keep each song in its own work folder and point `COVERS_WORK` at it:
+
+```bash
+COVERS_WORK=covers/work/<song> python covers/song/cover.py --show
+```
+
+`<song>/cover.json`:
+
+```json
+{"id": "despicable-me", "title": "Despicable Me (Pharrell Williams) - CHIMERA cover", "bpm": 85, "t0": 0.32,
+ "voices": [{"name": "Pharrell", "body": "male"}]}
+```
+
+Each voice can also have `lines` (1-based inclusive ranges, `[[1, 8], [17, 24]]`), `shift`
+(semitones), `gain`, `look` and `enter`. `hand` replaces a line's notes:
+`{"12": [[start_s, length_s, "C4", "word"], ...]}`.
+It reads `game/vocals.txt`, `hfa/words.json`, `stems/*(vocals)*`, `stems/*(other)*` and
+`video.mp4` from the work folder. It drops stray notes after a line's last syllable (ad-libs and
+backing voices left in the stem), then writes `public/shows/<id>/`. The voices get the original
+vocal stem's loudness.
+
+We made the `despicable-me` show this way. We found its lyrics (the rap verses are missing on most
+lyric sites) by running Whisper (`faster-whisper`, model `small.en`) on the vocal stem first.
 
 ## Known limits
 

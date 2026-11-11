@@ -15,8 +15,6 @@ the key (E flat minor; E minor from the outro on).
 """
 import json
 import os
-import re
-import subprocess
 import sys
 
 import numpy as np
@@ -25,7 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "song"))
 sys.path.insert(0, os.path.dirname(HERE))
 import align  # noqa: E402
-from paths import REPO, WORK  # noqa: E402
+from paths import WORK  # noqa: E402
 
 AB = f"{WORK}/ab"
 
@@ -107,59 +105,6 @@ def game_notes(path):
     return out
 
 
-def chimera_counts(tokens):
-    """how many syllables the engine makes of each lyric token ("-" = melisma, skipped)"""
-    probe = "/tmp/ab_probe.json"
-
-    def run(n):
-        json.dump({"bpm": 120, "t0": 0, "lyrics": " ".join(tokens), "notes": [[60, 0.05]] * n}, open(probe, "w"))
-        return subprocess.run(["./target/release/chimera", "render", "notes", probe, "/tmp/ab_probe", "male", "--syllables", "/tmp/ab_probe.syl.json"],
-                              cwd=REPO, capture_output=True, text=True)
-    r = run(1)
-    n = int(re.search(r"(\d+) syllables for", r.stdout + r.stderr).group(1)) if r.returncode else 1
-    if run(n).returncode:
-        sys.exit("probe failed")
-    syl = [s["syl"] for s in json.load(open("/tmp/ab_probe.syl.json")) if not s["syl"].get("melisma")]
-    norm = lambda s: re.sub(r"[^a-z]", "", s.lower())  # noqa: E731
-    counts, i = [], 0
-    for tok in (t for t in tokens if t != "-"):
-        j, text = i, ""
-        while j < len(syl):
-            text += syl[j]["text"]
-            j += 1
-            if syl[j - 1]["wordEnd"]:
-                break
-        if norm(text) == norm(tok):
-            counts.append(j - i)
-            i = j
-        else:  # the engine made nothing of this token
-            counts.append(0)
-    return counts
-
-
-def fit(ev):
-    """give each word as many notes as the engine has syllables for it: surplus notes carry the
-    vowel on (melisma), a missing one splits the word's last note"""
-    groups = []
-    for i, e in enumerate(ev):
-        if e[3] and e[3] != "-":
-            groups.append([i])
-        elif e[3] is None and groups:
-            groups[-1].append(i)
-    splits = {}
-    for g, c in zip(groups, chimera_counts([e[3] for e in ev if e[3]])):
-        for i in g[c:]:
-            ev[i][3] = "-"
-        if len(g) < c:
-            splits[g[-1]] = c - len(g) + 1
-    out = []
-    for i, e in enumerate(ev):
-        n = splits.get(i, 1)
-        step = (e[1] - e[0]) / n
-        out.extend([e[0] + k * step, e[0] + (k + 1) * step, e[2], e[3] if k == 0 else None, e[4]] for k in range(n))
-    return out
-
-
 def main():
     notes = game_notes(f"{AB}/song/game/vocals.txt")
     words = json.load(open(f"{AB}/song/aligned_words.json"))
@@ -191,7 +136,7 @@ def main():
         for a, b in zip(ev, ev[1:]):
             if b[0] < a[1]:
                 a[1] = b[0]
-        ev = fit([e for e in ev if e[1] > e[0]])
+        ev = align.fit([e for e in ev if e[1] > e[0]])
         json.dump(align.melody(ev), open(f"{AB}/build/{name}.json", "w"))
         lo, hi = min(e[2] for e in ev), max(e[2] for e in ev)
         print(f"build/{name}.json: {len(ev)} notes, {align.name(lo)}..{align.name(hi)}")

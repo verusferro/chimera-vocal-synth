@@ -69,6 +69,7 @@ export function DuetPage(props: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const [backingVol, setBackingVol] = useState(1);
+  const [videoOn, setVideoOn] = useState(true);
 
   useEffect(() => {
     const t = new Transport();
@@ -132,7 +133,7 @@ export function DuetPage(props: { id: string }) {
       </header>
       <main className={loaded?.voices.some((v) => v.enter > 0 && st.time >= v.enter) ? "duet-heads split" : "duet-heads"} style={{ "--voices": loaded?.voices.filter((v) => st.time >= v.enter).length || 1 } as React.CSSProperties}>
         {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={st.time < v.enter ? " waiting" : v.enter > 0 ? " entering" : ""} show={loaded.show} transport={transport} facing={i > 0 && i === loaded.voices.length - 1 ? -1 : 1} />) : <p className="duet-msg">Loading the song…</p>}
-        {loaded?.show.video && transport && <CornerVideo src={base + loaded.show.video} transport={transport} />}
+        {loaded?.show.video && transport && videoOn && <CornerVideo src={base + loaded.show.video} transport={transport} />}
       </main>
       <footer className="duet-bar">
         <button className="primary large" disabled={!loaded} onClick={() => (st.playing ? transport?.pause() : transport?.play())}>
@@ -152,6 +153,11 @@ export function DuetPage(props: { id: string }) {
           onChange={(e) => transport?.seek(Number(e.target.value))}
           style={{ "--pos": `${st.duration ? (100 * st.time) / st.duration : 0}%` } as React.CSSProperties}
         />
+        {loaded?.show.video && (
+          <button className="ghost" aria-pressed={videoOn} title={videoOn ? "Hide the video" : "Show the video"} onClick={() => setVideoOn((on) => !on)}>
+            {videoOn ? "Hide video" : "Show video"}
+          </button>
+        )}
         {loaded?.show.backing && (
           <label className="duet-backing">
             Backing
