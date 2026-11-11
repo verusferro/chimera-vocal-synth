@@ -102,6 +102,15 @@ audio-separator covers/work/song.wav \
   --output_dir covers/work/stems --output_format WAV
 ```
 
+With an AMD GPU (setup.md), use the wrapper and the GPU venv instead; it takes the same
+arguments and is about 14 times faster:
+
+```bash
+LD_LIBRARY_PATH=/opt/rocm/lib covers/vendor/rocm/.venv/bin/python covers/song/separate.py covers/work/song.wav \
+  -m bs_roformer_vocals_resurrection_unwa.ckpt --model_file_dir covers/vendor/models \
+  --output_dir covers/work/stems --output_format WAV
+```
+
 This writes two files into `covers/work/stems/`:
 - `song_(vocals)_bs_roformer_vocals_resurrection_unwa.wav`: the voices.
 - `song_(other)_bs_roformer_vocals_resurrection_unwa.wav`: everything else. This is the instrumental of the show.
@@ -208,6 +217,25 @@ The model is `models/1218_hfa_model_new_dict/model.onnx` in `covers/vendor/Huber
 
 `spot.py` prints, for a few words, the start time, the nearest audio onset and the loudness around the start.
 Edit its list of `(line, word)` pairs. Use it when a word sounds late or early in the show.
+
+### 5b. Fix the gross errors with Whisper: `fix_words.py`
+
+```bash
+python covers/song/fix_words.py
+```
+
+HubertFA is exact where it is right. In a busy stem (a choir, ad-libs, a line missing from
+`lyrics.txt`) it can hold one word for seconds and push the next words late. `fix_words.py` runs
+Whisper (`faster-whisper`, `medium.en`) on the vocal stem once, matches its words to the lyrics in
+order, and moves only the words the aligner put more than 0.35 s from Whisper's time. Words
+between two matched words that fell outside them follow the earlier one at 0.4 s each.
+The aligner's output stays in `hfa/words_aligner.json`; run the script again after each
+`final.py` run.
+
+On *You're a Mean One, Mr. Grinch* this moved 30 of 195 words. Before, 22% of the matched words
+started more than 0.3 s from Whisper's time and 8% more than 1 s ("everybody" sat 7 s late);
+after, 3% and 0%. We also tried Meta's MMS forced aligner (torchaudio `MMS_FA`): on the same song
+it had more errors over 1 s (15%) than HubertFA, so we did not keep it.
 
 ## 6. Notes to syllables: `align.py`
 

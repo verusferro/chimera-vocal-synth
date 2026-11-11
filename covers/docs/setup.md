@@ -28,13 +28,35 @@ One virtual environment runs all `covers/` scripts. We used Python 3.12 and
 ```sh
 uv venv -p 3.12 .venv
 uv pip install --python .venv/bin/python \
-  "audio-separator[cpu]" librosa soundfile pyworld cmudict scipy pillow "setuptools<81"
+  "audio-separator[cpu]" librosa soundfile pyworld cmudict scipy pillow faster-whisper "setuptools<81"
 ```
 
 `pyworld` needs `pkg_resources`, which `setuptools` 81 and later do not have. That is why
 `setuptools` is pinned.
 
 Run the scripts with this Python, for example `.venv/bin/python covers/sam/build_ab.py`.
+
+### Optional: an AMD GPU for stem separation
+
+Separating a song takes about 8 times its length on a 6-core CPU (a 109 s song: 15 minutes). On a
+Radeon RX 9070 XT it takes about 0.6 times its length (the same song: 65 s). We used WSL2 with AMD's ROCm for WSL (7.2) already installed in `/opt/rocm`
+(`/opt/rocm/bin/rocminfo` must list the GPU).
+
+```sh
+uv venv -p 3.12 covers/vendor/rocm/.venv
+uv pip install --python covers/vendor/rocm/.venv/bin/python \
+  --index-url https://download.pytorch.org/whl/rocm6.4 torch==2.8.0 torchaudio==2.8.0
+uv pip install --python covers/vendor/rocm/.venv/bin/python "audio-separator[cpu]" audioread
+# WSL: use the system HSA runtime (it talks to the Windows driver), not the bundled one
+rm covers/vendor/rocm/.venv/lib/python3.12/site-packages/torch/lib/libhsa-runtime64.so*
+```
+
+Run it through `covers/song/separate.py` with `LD_LIBRARY_PATH=/opt/rocm/lib`. The wrapper
+switches the RoFormer attention to PyTorch's plain kernel: with the default one, this GPU gives
+noise instead of a vocal stem. We checked the wrapper's stem against the CPU stem: it matches to
+-85 dB. AMD's own "lightweight" ROCm 7.2 wheels did not load here, because they need ROCm
+libraries that the WSL install lacks. Whisper (faster-whisper) has no ROCm build, so it stays on
+the CPU (a few minutes per song).
 
 ## 3. The work and vendor folders
 
