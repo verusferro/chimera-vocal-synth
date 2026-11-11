@@ -2809,6 +2809,20 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text-dim);
 }
 
+/* the cover picker, top right */
+.duet-pick {
+  margin-left: auto;
+  max-width: min(46vw, 420px);
+  background: #000;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .duet-heads {
   position: relative;
   display: grid;

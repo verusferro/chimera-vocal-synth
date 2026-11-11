@@ -70,6 +70,11 @@ export function DuetPage(props: { id: string }) {
   const [, setTick] = useState(0);
   const [backingVol, setBackingVol] = useState(1);
   const [videoOn, setVideoOn] = useState(true);
+  // the other shows on this site (shows/index.json: [{id, title}]), for the picker; none = no picker
+  const [shows, setShows] = useState<{ id: string; title: string }[]>([]);
+  useEffect(() => {
+    fetchOk(`${import.meta.env.BASE_URL}shows/index.json`).then((r) => r.json()).then(setShows, () => {});
+  }, []);
 
   useEffect(() => {
     const t = new Transport();
@@ -130,6 +135,15 @@ export function DuetPage(props: { id: string }) {
       <header className="duet-top">
         <span className="wordmark">Chimera</span>
         <span className="duet-title">{title}</span>
+        {shows.length > 1 && (
+          <select className="duet-pick" aria-label="Cover" value={props.id} onChange={(e) => (location.search = `?show=${encodeURIComponent(e.target.value)}`)}>
+            {shows.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+        )}
       </header>
       <main className={loaded?.voices.some((v) => v.enter > 0 && st.time >= v.enter) ? "duet-heads split" : "duet-heads"} style={{ "--voices": loaded?.voices.filter((v) => st.time >= v.enter).length || 1 } as React.CSSProperties}>
         {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={st.time < v.enter ? " waiting" : v.enter > 0 ? " entering" : ""} show={loaded.show} transport={transport} facing={i > 0 && i === loaded.voices.length - 1 ? -1 : 1} />) : <p className="duet-msg">Loading the song…</p>}
@@ -160,7 +174,7 @@ export function DuetPage(props: { id: string }) {
         )}
         {loaded?.show.backing && (
           <label className="duet-backing">
-            Backing
+            Music
             <input
               type="range"
               min={0}

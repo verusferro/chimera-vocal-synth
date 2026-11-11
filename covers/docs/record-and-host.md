@@ -101,7 +101,7 @@ They are mixed at full level (`amix=normalize=0`) and then limited. The filter i
 turns off the limiter's automatic gain. The voices and the instrumental add up, and without the
 limiter they could clip. The mp4 uses H.264 (`crf 18`) and AAC at 192 kb/s.
 
-The recording does not match what a live viewer hears when they change the Backing slider. It
+The recording does not match what a live viewer hears when they change the Music slider. It
 uses both tracks at volume 1.
 
 Common problems:

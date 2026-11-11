@@ -14,7 +14,7 @@ git diff upstream/main --stat -- src crates
 | Area | File | What changed |
 |---|---|---|
 | Backing track | `src/show/transport.ts` | A second audio track on the same clock, with its own volume |
-| Duet page | `src/ui/components/DuetPage.tsx` | Corner video, backing slider, late-entering heads, `look` |
+| Duet page | `src/ui/components/DuetPage.tsx` | Corner video, Music slider, cover picker, late-entering heads, `look` |
 | 3D head | `src/ui/components/AnatomyView3D.tsx` | `look` in the feed, redraw after a resize |
 | 3D renderer | `src/ui/render/anatomy3d.ts` | Costume hooks |
 | Costumes (new) | `src/ui/render/costume.ts`, `niko.ts`, `v1.ts` | Character heads, see [wireframe-heads.md](wireframe-heads.md) |
@@ -32,8 +32,14 @@ A show can have two audio files: `audio` (the voices) and `backing` (the instrum
 `AudioContext` time and the same offset. So they stay in sync for seek, pause and resume.
 
 The backing track goes through its own gain node. `Transport.setBackingVolume(v)` sets it
-(1 = as mixed). The page shows a "Backing" slider (0 to 1.25) in the footer when the show has a
+(1 = as mixed). The page shows a "Music" slider (0 to 1.25) in the footer when the show has a
 backing file. The idea: a viewer can turn down the instrumental to hear the synthetic voices.
+
+## Cover picker
+
+If the site has `shows/index.json` (`[{"id": "grinch", "title": "You're a Mean One, Mr. Grinch"}, ...]`)
+with two or more entries, the top right of the page shows a list of them. Picking one opens
+`?show=<id>`. Write the file by hand next to the show folders; it is not built.
 
 `audio` also sets the show's length. When there is a backing file, `audio` holds the voices only,
 padded with silence to the song's length. `build_show.sh` and `build_ab.py` make it that way.
