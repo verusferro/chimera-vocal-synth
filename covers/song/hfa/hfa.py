@@ -10,9 +10,12 @@ def stem():
     global _y
     if _y is None: _y = librosa.load(STEM, sr=SR, mono=True)[0]
     return _y
+# words the aligner's dictionary lacks, respelled for the alignment only (one word for one word):
+# WORK/hfa/respell.json, e.g. {"rumba": "rumble"}; the shown and sung words stay as written
+RESPELL = json.load(open(f'{WORK}/hfa/respell.json')) if os.path.exists(f'{WORK}/hfa/respell.json') else {}
 def lab(line):
     t = re.sub(r"[^a-z' ]", ' ', line.lower().replace("pain's", 'pains'))
-    return ' '.join(t.split())
+    return ' '.join(RESPELL.get(w, w) for w in t.split())
 def toks(line):  # original-case tokens aligned 1:1 with lab(line) tokens
     return [re.sub(r"[^A-Za-z']", '', w) for w in re.sub(r"[^A-Za-z' ]", ' ', line).split()]
 def make_segments(segs, folder):

@@ -370,11 +370,25 @@ It reads `game/vocals.txt`, `hfa/words.json`, `stems/*(vocals)*`, `stems/*(other
 backing voices left in the stem), then writes `public/shows/<id>/`. The voices get the original
 vocal stem's loudness.
 
+`mix.mp3` contains only the new voices. The browser adds `backing.mp3` on the same clock.
+Do not put the instrumental in both files: that doubles its level and makes the backing
+slider unable to mute it.
+
+For half-spoken tracks where GAME misses syllables, set `"notes": "f0"` in `cover.json`.
+This takes one pitch per aligned syllable from WORLD's vocal-stem analysis. It folds clear
+octave jumps toward the lead's range. This is a heuristic for one lead, not a separator for
+overlapping singers. Leave it off for songs with distinct low and high roles.
+Set `"grid": 0.125` for a drifting live tempo; timing is rounded to that finer grid.
+
+If HubertFA skips an unknown word, create `hfa/respell.json`, for example
+`{"rumba": "rumble", "chicky": "cheeky"}`. Each replacement must be one dictionary word.
+Only the alignment spelling changes; CHIMERA still sings the original word.
+
 We made the `despicable-me` show this way. We found its lyrics (the rap verses are missing on most
 lyric sites) by running Whisper (`faster-whisper`, model `small.en`) on the vocal stem first.
 
 ## Known limits
 
-- `make_song.py` and `final.py` hold facts about our song (line numbers, beat offsets, the 170 s flag). They are tables, not code to reuse as is.
+- `make_song.py` holds facts about Switch Off The Game (line numbers and beat offsets). Its tables need changes for another song. `final.py` reads each song's regions from `hfa/regions.json`.
 - GAME and HubertFA work on a single clear voice. They do not work on stacked voices.
 - HubertFA needs words that its English dictionary knows.
