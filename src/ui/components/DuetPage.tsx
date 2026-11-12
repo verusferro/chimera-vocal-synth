@@ -15,7 +15,7 @@
  * `spell` ({"owr": "our"}) writes a syllable spelled for the dictionary as it should read;
  * `video` (a silent picture on the mix's clock, e.g. the original's lyric video) plays in a corner.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnatomyView3D, type HeadFeed } from "./AnatomyView3D.tsx";
 import { Screen } from "./Screen.tsx";
 import { TeleTrack } from "../../show/tele.ts";
@@ -53,11 +53,11 @@ interface Loaded {
 }
 
 const isOn = (v: { on: [number, number | null][] }, t: number): boolean => v.on.some(([a, b]) => t >= a && (b === null || t < b));
-/** s: a head's slide in or out, and the others' making or taking back room (the CSS keyframes' length) */
+/** s: a head's growing in or shrinking away (the CSS keyframes' length) */
 const MOVE_S = 0.7;
-/** a head that went off less than MOVE_S ago: still sliding out, still holding its place */
+/** a head that went off less than MOVE_S ago: still shrinking away in its place */
 const isLeaving = (v: { on: [number, number | null][] }, t: number): boolean => !isOn(v, t) && v.on.some(([, b]) => b !== null && t >= b && t < b + MOVE_S);
-/** a head that comes (or goes) during the song: it slides in each time it comes on */
+/** a head that comes (or goes) during the song: it grows in each time it comes on */
 const late = (v: { on: [number, number | null][] }): boolean => v.on.length > 1 || v.on[0][0] > 0 || v.on[0][1] !== null;
 /** s: windows of different heads less than this apart are one section (a dialogue, a shared verse) */
 const SECTION_GAP_S = 2;
@@ -166,57 +166,6 @@ export function DuetPage(props: { id: string }) {
     return () => window.removeEventListener("keydown", key);
   }, [transport, loaded]);
 
-  // when heads come or go, the others move to their new places and sizes over MOVE_S rather than
-  // jump. A head coming on slides in (CSS) while the others make room; a head going is taken out
-  // of the row at once (so the others widen over the same MOVE_S) and slides out from where it
-  // stood, laid over the row. A change during a move starts from where each head is on screen.
-  const mainRef = useRef<HTMLElement | null>(null);
-  const layout = useRef<{ key: string; boxes: Map<Element, DOMRect> }>({ key: "", boxes: new Map() });
-  useEffect(() => {
-    // a resized window makes the kept boxes stale: the next change jumps instead of moving from them
-    const stale = () => layout.current.boxes.clear();
-    window.addEventListener("resize", stale);
-    return () => window.removeEventListener("resize", stale);
-  }, []);
-  useLayoutEffect(() => {
-    const main = mainRef.current;
-    if (!main) return;
-    const all = [...main.querySelectorAll<HTMLElement>(":scope > .duet-head")];
-    const key = all.map((h) => (h.classList.contains("waiting") ? "w" : h.classList.contains("leaving") ? "l" : "o")).join("");
-    if (key === layout.current.key) return;
-    const prev = layout.current.boxes;
-    const m = main.getBoundingClientRect();
-    const boxes = new Map<Element, DOMRect>();
-    const motion = !!layout.current.key && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // a head's place in the row (its slide's transform aside); main is the heads' offsetParent
-    const box = (h: HTMLElement) => new DOMRect(m.left + h.offsetLeft, m.top + h.offsetTop, h.offsetWidth, h.offsetHeight);
-    for (const h of all) {
-      const leaving = h.classList.contains("leaving");
-      if (!leaving) h.style.left = h.style.top = h.style.width = h.style.height = "";
-      if (h.classList.contains("waiting")) continue;
-      const p = prev.get(h);
-      if (leaving) {
-        // laid over the row where it stood (its CSS takes it out of the grid), sliding out from there
-        if (p) Object.assign(h.style, { left: `${p.left - m.left}px`, top: `${p.top - m.top}px`, width: `${p.width}px`, height: `${p.height}px` });
-        continue;
-      }
-      if (!p) {
-        // just come on: its CSS slide in runs, and it has no old box to move from
-        boxes.set(h, box(h));
-        continue;
-      }
-      // still moving (its slide in, or a box move): it goes on from where it is on screen now
-      const moving = h.getAnimations();
-      const seen = moving.length ? h.getBoundingClientRect() : p;
-      for (const a of moving) a.cancel();
-      const r = box(h);
-      boxes.set(h, r);
-      if (!motion || !seen || Math.max(Math.abs(seen.left - r.left), Math.abs(seen.top - r.top), Math.abs(seen.width - r.width), Math.abs(seen.height - r.height)) < 1) continue;
-      h.animate([{ width: `${seen.width}px`, height: `${seen.height}px`, transform: `translate(${seen.left - r.left}px, ${seen.top - r.top}px)` }, { width: `${r.width}px`, height: `${r.height}px`, transform: "none" }], { duration: MOVE_S * 1000, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
-    }
-    layout.current = { key, boxes };
-  });
-
   if (error)
     return (
       <div className="duet">
@@ -225,7 +174,6 @@ export function DuetPage(props: { id: string }) {
     );
   const st = transport?.state ?? { playing: false, time: 0, duration: 0, epoch: 0 };
   const title = loaded?.show.title ?? "Loading…";
-  const entered = loaded?.voices.filter((v) => isOn(v, st.time)).length || 1;
   return (
     <div className="duet">
       <header className="duet-top">
@@ -241,7 +189,7 @@ export function DuetPage(props: { id: string }) {
           </select>
         )}
       </header>
-      <main ref={mainRef} className="duet-heads" style={{ "--voices": entered } as React.CSSProperties}>
+      <main className="duet-heads">
         {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={isLeaving(v, st.time) ? " leaving" : !isOn(v, st.time) ? " waiting" : late(v) ? " entering" : ""} show={loaded.show} transport={transport} facing={v.facing} />) : <p className="duet-msg">Loading the song…</p>}
         {loaded?.show.video && transport && videoOn && <CornerVideo src={base + loaded.show.video} transport={transport} />}
       </main>

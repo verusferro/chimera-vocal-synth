@@ -28,7 +28,7 @@ One virtual environment runs all `covers/` scripts. We used Python 3.12 and
 ```sh
 uv venv -p 3.12 .venv
 uv pip install --python .venv/bin/python \
-  "audio-separator[cpu]" librosa soundfile pyworld cmudict scipy pillow faster-whisper "setuptools<81"
+  "audio-separator[cpu]" librosa soundfile pyworld cmudict scipy pillow faster-whisper rmvpe-onnx "setuptools<81"
 ```
 
 `pyworld` needs `pkg_resources`, which `setuptools` 81 and later do not have. That is why

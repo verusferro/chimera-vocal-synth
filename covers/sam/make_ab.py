@@ -11,7 +11,7 @@ octave down), then the whole song moves TRANSPOSE semitones (the build shifts th
 by the same amount).
 
 The singers are human and the verses half rapped, so GAME's notes wander: a sung note's pitch is
-the median pYIN pitch at its start, moved by octaves next to its line's median, then snapped to
+the median RMVPE pitch at its start, moved by octaves next to its line's median, then snapped to
 the key (E flat minor; E minor from the outro on).
 """
 import json
@@ -76,7 +76,7 @@ def snap(m, tonic):
 
 
 def refine(ev, f0, rate):
-    """the line's sung pitches: pYIN at each note's first 0.3 s, octave-fixed, in the key"""
+    """the line's sung pitches: RMVPE at each note's first 0.3 s, octave-fixed, in the key"""
     t = [align.T0 + e[0] * align.BEAT for e in ev]
     raw = []
     for e, t0 in zip(ev, t):
@@ -112,8 +112,9 @@ def main():
     words = json.load(open(f"{AB}/song/aligned_words.json"))
     lines = {l["i"]: l for l in json.load(open(f"{AB}/song/lines_timed.json"))}
     words = [w for w in words if w["line"] in lines]
-    pyin = np.load(f"{AB}/research/f0_vocals.npz")
-    f0, rate = pyin["f0"], float(pyin["sr"]) / float(pyin["hop"])
+    from cover import rmvpe_hz  # the shared stem pitch (pYIN dropped most held notes here)
+    f0 = rmvpe_hz(f"{AB}/song/vocals.wav", f"{AB}/research/f0_rmvpe.npy")
+    f0, rate = np.where(f0 > 0, f0, np.nan), 100.0
     res = align.build(notes, words)
     res.update({ln: hand(rows) for ln, rows in HAND.items()})
     voices = {}  # singer -> lines' events, in order of first appearance (Caine first)

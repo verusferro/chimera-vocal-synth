@@ -57,10 +57,10 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
   video** button in the bottom bar takes it off and puts it back.
 - **Heads that come and go (`on`).** A voice with `on: [[179, null]]` stays off screen until
   second 179 and then stays (`null`: to the end). `on: [[80, 86.5], [156, 162]]` is on screen only
-  in those windows. Each time it comes on it slides in from the right while the heads already
-  there make room; when it goes it is the same, run backwards: it leaves the row at once, the
-  others widen to take its room, and it slides out to the right over them from where it stood
-  (0.7 s each way). Heads that sing in one section (their windows overlap or follow within 2 s,
+  in those windows. Each time it comes on it grows in from nothing where it stands, fading in,
+  while the heads already there narrow to make room; when it goes it is the same, backwards: it
+  fades and narrows to nothing while the others widen into its room (0.7 s each way; the row is a
+  flexbox and the CSS animates the head's `flex-grow`, so nothing passes over another head). Heads that sing in one section (their windows overlap or follow within 2 s,
   `together()` in `DuetPage.tsx`) stay until the section's last line and all go together at its
   end: the Stubborn voice stays on while the Broken voice answers, and Ragatha waits for Pomni in
   the intro of *ARTIST BLOCK*. The CSS classes `.waiting`, `.entering` and `.leaving` do
@@ -106,12 +106,10 @@ Each voice:
 Without `facing`, the last voice (if there is more than one) looks to the left and the others
 look to the right. In *ARTIST BLOCK* every guest has `facing: -1`: they look left, towards Caine.
 
-The heads on screen stand side by side in one row. When one comes or goes, the others move to
-their new places and widths over 0.7 s (`useLayoutEffect` in `DuetPage.tsx` animates each head
-from its old box to its new one, or from where it is on screen if it was still moving, so a head
-coming on while another goes does not jump). The corner `<video>` sits in a box of its own
-(`.duet-video`): a browser extension (a video speed controller) puts its controls next to the
-video, and next to it in the heads' grid they took a head's place and broke the row.
+The heads on screen stand side by side in one row (a flexbox: each on-screen head takes an equal
+share). The corner `<video>` sits in a box of its own (`.duet-video`): a browser extension (a
+video speed controller) puts its controls next to the video, and next to it in the heads' row
+they took a head's place and broke the row.
 
 The voices' renders and the mix must start at sample 0. The page only plays the mix and replays
 each `.tele` at the playhead. It does not synthesize anything.

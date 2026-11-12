@@ -48,9 +48,10 @@ def move(w, t0, t1):
     w["start"], w["end"] = round(t0, 3), round(t1, 3)
 
 
-def fix(words, wh, win=None):
+def fix(words, wh, win=None, voiced=None):
     """`win(line)`: the (start, end) s of the region the aligner had for that line, or None; a
-    Whisper word outside it is a match to the same words sung elsewhere (a repeated line)"""
+    Whisper word outside it is a match to the same words sung elsewhere (a repeated line).
+    `voiced`: the stem sounding or not, per 10 ms (None: not known)"""
     norm = lambda s: re.sub(r"[^a-z]", "", s.lower())  # noqa: E731
     pairs = []
     sm = difflib.SequenceMatcher(None, [norm(w["word"]) for w in words], [norm(x["w"]) for x in wh], autojunk=False)
@@ -79,10 +80,24 @@ def fix(words, wh, win=None):
             break
         del pairs[max(tight, key=lambda i: abs(words[i]["start"] - pairs[i]["s"]))]
     moved = 0
+
+    def heard_until(t0, t1):
+        """where the stem stops sounding after t0 (gaps under 0.1 s pass), at most t1"""
+        if voiced is None:
+            return t1
+        k, end, gap = int(t0 * 100), int(t1 * 100), 0
+        while k < min(end, len(voiced)) and gap < 10:
+            gap = 0 if voiced[k] else gap + 1
+            k += 1
+        return (k - gap) / 100
+
     for i, x in pairs.items():
         w = words[i]
         if abs(w["start"] - x["s"]) > OFF:
-            move(w, x["s"], max(x["e"], x["s"] + 0.08))
+            # Whisper's word ends are rough and short on a held note: the word keeps the aligner's
+            # length while the stem still sounds
+            end = max(x["e"], x["s"] + 0.08, heard_until(x["s"], x["s"] + w["end"] - w["start"]))
+            move(w, x["s"], end)
             moved += 1
     anchors = sorted(pairs)
     spread = 0
@@ -90,20 +105,41 @@ def fix(words, wh, win=None):
         lo, hi = words[a]["end"], words[b]["start"]
         gap = words[a + 1: b]
         if gap and hi > lo and any(w["start"] < lo or w["end"] > hi for w in gap):
-            # the unmatched words follow the matched one at a sung pace (at most 0.4 s each)
-            step = min((hi - lo) / len(gap), 0.4)
-            for k, w in enumerate(gap):
-                move(w, lo + k * step, lo + (k + 1) * step)
+            # the unmatched words follow the matched one in the aligner's proportions (a held word
+            # stays the longest), squeezed into the room there is, never longer than the aligner had
+            d = [max(w["end"] - w["start"], 0.05) for w in gap]
+            k = min(1.0, (hi - lo) / sum(d))
+            t = lo
+            for w, dw in zip(gap, d):
+                move(w, t, t + dw * k)
+                t += dw * k
             spread += len(gap)
     for i, w in enumerate(words):
-        # an unmatched word held over 1.2 s: the aligner put its start in a pause or an ad-lib
-        if i not in pairs and w["end"] - w["start"] > 1.2:
+        # an unmatched word held over 1.2 s while the stem is mostly silent there: the aligner put
+        # its start in a pause or an ad-lib (a word the stem sounds through is a held note: kept)
+        if i not in pairs and w["end"] - w["start"] > 1.2 and (voiced is None or heard_until(w["start"], w["end"]) - w["start"] < 0.8 * (w["end"] - w["start"])):
             move(w, w["end"] - 0.6, w["end"])
         if i and w["start"] < words[i - 1]["start"]:
             move(w, words[i - 1]["start"] + 0.02, max(w["end"], words[i - 1]["start"] + 0.1))
     for w, nxt in zip(words, words[1:]):  # no word runs into the next one
         if w["end"] > nxt["start"]:
             move(w, w["start"], max(nxt["start"], w["start"] + 0.02))
+    if voiced is not None:
+        for i, w in enumerate(words):
+            prev_end = words[i - 1]["end"] if i else 0.0
+            nxt = words[i + 1]["start"] if i + 1 < len(words) else w["end"] + 1.0
+            # a sound that began after the last word and runs into this one is this word's start
+            # (a held first vowel, a pickup: the aligner often hears the word late)
+            k = j = int(w["start"] * 100)
+            while 0 < j <= len(voiced) and voiced[j - 1]:
+                j -= 1
+            if k < len(voiced) and voiced[k] and j > 0 and j / 100 > prev_end and 0.1 < w["start"] - j / 100 <= 0.8:
+                w["start"] = w["phones"][0]["start"] = round(j / 100, 3)
+            # and the stem still sounding after the word, up to the next one (at most 1 s more), is
+            # the word held on: its last phone takes it
+            e = heard_until(w["end"], min(nxt, w["end"] + 1.0))
+            if e > w["end"] + 0.05:
+                w["end"] = w["phones"][-1]["end"] = round(e, 3)
     return moved, spread, len(pairs)
 
 
@@ -116,9 +152,18 @@ def main():
     if os.path.exists(f"{H}/regions.json"):  # [name, start, end, first line, last line + 1], 0-based lines
         regions = json.load(open(f"{H}/regions.json"))
         win = lambda ln: next(((a, b) for _, a, b, l0, l1 in regions if l0 < ln <= l1), None)  # noqa: E731
-    moved, spread, matched = fix(words, whisper_words(), win)
+    moved, spread, matched = fix(words, whisper_words(), win, stem_sounding())
     json.dump(words, open(f"{H}/words.json", "w"), indent=1)
     print(f"{len(words)} words, {matched} matched to Whisper; moved {moved}, spread {spread}")
+
+
+def stem_sounding():
+    """the vocal stem sounding (RMS within 35 dB of its loudest), per 10 ms"""
+    import librosa
+    import numpy as np
+    y, _ = librosa.load(glob.glob(f"{WORK}/stems/*(vocals)*")[0], sr=16000)
+    db = librosa.amplitude_to_db(librosa.feature.rms(y=y, frame_length=640, hop_length=160)[0], ref=np.max)
+    return db > -35
 
 
 if __name__ == "__main__":

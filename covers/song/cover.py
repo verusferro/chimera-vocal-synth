@@ -29,7 +29,6 @@ import sys
 
 import librosa
 import numpy as np
-import pyworld as pw
 import soundfile as sf
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -58,14 +57,21 @@ def trim_tail(ev):
     return keep
 
 
-def stem_midi():
-    """the vocal stem's pitch (harvest, 10 ms frames) as float MIDI, NaN where unvoiced; cached"""
-    cache = f"{WORK}/build/f0.npy"
+def rmvpe_hz(wav, cache):
+    """RMVPE pitch of a vocal stem (Hz, 0 where unvoiced; 10 ms frames), cached. RMVPE (the RVC
+    project's pitch net, rmvpe-onnx) holds the voice through held notes and backing sound where
+    WORLD's harvest and pYIN drop out or jump"""
     if not os.path.exists(cache):
-        y, sr = sf.read(glob.glob(f"{WORK}/stems/*(vocals)*")[0])
-        y = np.ascontiguousarray((y.mean(1) if y.ndim > 1 else y).astype(np.float64))
-        np.save(cache, pw.harvest(y, sr, f0_floor=60, f0_ceil=900, frame_period=10)[0])
-    f0 = np.load(cache)
+        from rmvpe_onnx import RMVPE
+        y, _ = librosa.load(wav, sr=16000)
+        _, f0, conf, _ = RMVPE().predict(audio=y, sr=16000)
+        np.save(cache, np.where(conf >= 0.03, f0, 0.0))
+    return np.load(cache)
+
+
+def stem_midi():
+    """the vocal stem's pitch (RMVPE, 10 ms frames) as float MIDI, NaN where unvoiced"""
+    f0 = rmvpe_hz(glob.glob(f"{WORK}/stems/*(vocals)*")[0], f"{WORK}/build/f0_rmvpe.npy")
     return np.where(f0 > 0, 12 * np.log2(np.maximum(f0, 1e-9) / 440) + 69, np.nan)
 
 

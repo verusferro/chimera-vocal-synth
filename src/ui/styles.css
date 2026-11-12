@@ -2828,16 +2828,20 @@ input[type="range"]::-moz-range-thumb {
 
 .duet-heads {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(var(--voices, 2), minmax(0, 1fr));
+  display: flex;
   gap: 8px;
   min-height: 0;
   overflow: hidden;
 }
 
+.duet-heads > .duet-head {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* the show's video: a small picture over the first head's lower corner, out of the faces' way. The
    <video> sits in a box of its own: a browser extension (a speed controller) puts its controls
-   beside the video, and beside it in the heads' grid they took a head's place and broke the row */
+   beside the video, and beside it in the heads' row they took a head's place and broke the row */
 .duet-video {
   position: absolute;
   left: 10px;
@@ -2870,29 +2874,32 @@ input[type="range"]::-moz-range-thumb {
   visibility: hidden;
 }
 
-/* its entrance: it slides in from the right while the others make room. On its way out it leaves
-   the row at once (the others widen) and slides out the way it came, laid over the row at the
-   place it stood (DuetPage.tsx sets that place, and moves the others box to box) */
+/* its entrance: it grows in from nothing where it stands, fading in, while the others narrow to
+   make room; on its way out the same, backwards: it fades and narrows to nothing while the others
+   widen into its room. Nothing passes over another head */
 .duet-head.entering {
-  animation: duet-slide-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: duet-grow 0.7s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .duet-head.leaving {
-  position: absolute;
-  z-index: 1;
-  /* the entrance's curve, run backwards */
-  animation: duet-slide-out 0.7s cubic-bezier(0.8, 0, 0.8, 0.2) both;
+  animation: duet-shrink 0.7s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
-@keyframes duet-slide-in {
+/* from nothing: no share of the row, and no gap of its own (the row's 8 px). Two names, not one
+   run in reverse: a class change that only flips the direction would not restart the animation */
+@keyframes duet-grow {
   from {
-    transform: translateX(calc(100% + 8px));
+    flex-grow: 0;
+    margin-left: -8px;
+    opacity: 0;
   }
 }
 
-@keyframes duet-slide-out {
+@keyframes duet-shrink {
   to {
-    transform: translateX(calc(100% + 8px));
+    flex-grow: 0;
+    margin-left: -8px;
+    opacity: 0;
   }
 }
 

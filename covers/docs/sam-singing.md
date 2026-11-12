@@ -136,7 +136,7 @@ Inputs (all under `covers/work/ab/`, made as in [song-from-youtube.md](song-from
 | `song/game/vocals.txt` | GAME note transcription of the vocal stem |
 | `song/aligned_words.json` | HubertFA word times, with a `line` number for each word |
 | `song/lines_timed.json` | each lyric line: start, end, singer, `kind` (`SUNG` or `SPOKEN`), text |
-| `research/f0_vocals.npz` | pYIN pitch of the vocal stem |
+| `research/f0_rmvpe.npy` | RMVPE pitch of the vocal stem (made on the first run, see `rmvpe_hz()` in `covers/song/cover.py`) |
 
 It uses `covers/song/align.py` to match syllables to GAME notes. It writes `build/<singer>.json` (Caine, Pomni, Jax, …) and `build/spans.json`. The `--show` flag prints each line's notes.
 
@@ -144,7 +144,7 @@ What it does:
 
 - **One voice per singer.** Each role in `lines_timed.json` (`who`, from Genius' singer headers) gets its own melody and its own head. A line that "All six" sing goes to each of the six. A line "Ragatha + others" goes to Ragatha.
 - **Sung or spoken.** Each line has a `kind` in `lines_timed.json`. We typed it from context and from the audio, because GAME also "finds" notes in speech. Spoken lines still get notes, so the head moves, but the sound comes from TTS.
-- **Pitch fix for sung lines.** The singers are human and parts are rapped, so GAME wanders. A sung note's pitch is the median pYIN pitch in the first 0.3 s of the note. (The middle half of the note measured no better here: 66% against 67% pitch-class agreement.) It is moved by whole octaves next to the median of its line. Then it is snapped to the key. The key is E flat minor, and E minor from `OUTRO = 202` s on.
+- **Pitch fix for sung lines.** The singers are human and parts are rapped, so GAME wanders. A sung note's pitch is the median RMVPE pitch in the first 0.3 s of the note (pYIN, used before, had no pitch for most held notes: at 2:18-2:21 it held 0.5 s of 3.5). It is moved by whole octaves next to the median of its line. Then it is snapped to the key. The key is E flat minor, and E minor from `OUTRO = 202` s on.
 - **Octave fitting.** Each sung line moves by whole octaves so its median is nearest `CENTER` (MIDI 57). Female roles end up an octave down.
 - **`TRANSPOSE = -7`.** After that, the whole song moves 7 semitones down (to A flat minor). Caine ends up at about 156 Hz. `build_ab.py` moves the instrumental by the same amount.
 - **`HAND` lines.** Some lines have no usable GAME or pYIN notes: the laughs, "Oh.", and the bridge where six voices sing at once. We set them by hand as `(start, length, note, word)`. The bridge notes follow the few pitches pYIN did hold. [They are a guess, not a transcription.]

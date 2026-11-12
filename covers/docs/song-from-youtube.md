@@ -171,6 +171,25 @@ What to expect and what to fix:
 - GAME also invents notes in speech and under overlaps. Check the result against the song.
 - To explore, tune `--seg-threshold` (note boundaries) and `--est-threshold` (note presence).
 
+**GAME against SOME.** We also ran SOME (openvpi's earlier note extractor, release
+`v1.0.0-baseline`, model `0119_continuous256_5spk`) on the same stems. On the *Switch Off* lead
+(0 to 165 s, scored against our hand-fixed melody, which started from GAME and so leans its way)
+and against each stem itself (no truth: *held* = share of RMVPE-voiced time some note covers;
+*onsets* = sung syllables with a note starting within 0.1 s; *pitch* = notes whose semitone
+matches RMVPE's median over the note's middle):
+
+| Song | GAME | SOME |
+|---|---|---|
+| Switch Off: onset F1 / onset+pitch F1 | 0.94 / 0.93 | 0.86 / 0.77 |
+| Despicable Me: held / onsets / pitch | 89% / 90% / 80% | 92% / 91% / 70% |
+| Grinch | 77% / 58% / 64% | 96% / 77% / 43% |
+| Won't Be Slain Here | 92% / 81% / 60% | 82% / 77% / 35% |
+| ARTIST BLOCK | 91% / 87% / 58% | 95% / 87% / 37% |
+
+SOME covers held notes a little more often, but its pitches are much worse everywhere. We kept
+GAME. Holds are fixed after it instead: the word times (step 5b) and `align.py` keep each
+syllable as long as the stem sounds.
+
 ## 4. Lyrics
 
 Write the sung lines, one per line, in `covers/work/lyrics.txt`.
@@ -242,8 +261,12 @@ python covers/song/fix_words.py
 HubertFA is exact where it is right. In a busy stem (a choir, ad-libs, a line missing from
 `lyrics.txt`) it can hold one word for seconds and push the next words late. `fix_words.py` runs
 Whisper (`faster-whisper`, `medium.en`) on the vocal stem once, matches its words to the lyrics in
-order, and moves only the words the aligner put more than 0.35 s from Whisper's time. Words
-between two matched words that fell outside them follow the earlier one at 0.4 s each.
+order, and moves only the words the aligner put more than 0.35 s from Whisper's time. A moved
+word keeps the aligner's length while the stem still sounds (Whisper's word ends are short on a
+held note). Words between two matched words that fell outside them follow the earlier one in the
+aligner's proportions, squeezed into the room there is, so a held word stays the longest. An
+unmatched word the aligner held over 1.2 s keeps only its last 0.6 s, unless the stem sounds
+through it: then it is a held note and stays.
 Two guards keep a wrong match from moving good words: a Whisper word outside the region that
 `hfa/regions.json` gives its line is ignored, and when two matches leave the lyric words between
 them no room (under 0.12 s a word), the one further from the aligner's time is dropped. Without
@@ -275,6 +298,7 @@ How it works:
 - A dynamic program matches syllables and notes in order. A note without a syllable costs `MELISMA` (0.15 s). A syllable without a note costs `ORPHAN` (0.3 s).
 - Times snap to the grid: 96 BPM, sixteenth notes (`GRID` = 0.25 beat), beat 0 at `T0`.
 - A silence longer than `REST` (0.2 s) after a note makes a rest (a breath). Otherwise a note lasts until the next one.
+- A syllable's last note lasts at least as long as the aligner heard the syllable (to the next vowel of its word, or the word's end), up to the next note. GAME often loses a held note, or has no note for a syllable (a breathy or effected one), and its note alone ended the syllable early: in *ARTIST BLOCK* the held "line" of "you've finally crossed the line" was 0.12 s.
 - Only the first syllable of a word gets the word as a token. The engine splits the word into syllables itself (its dictionary), so the counts must agree.
 
 For a new song change at the top of `align.py` (and the same three constants at the top of `melody.py`):
@@ -418,7 +442,11 @@ It reads `game/vocals.txt`, `hfa/words.json`, `stems/*(vocals)*`, `stems/*(other
 `video.mp4` from the work folder. Each line belongs to the first voice whose `lines` hold it.
 Then, for every line that is not a `hand` line:
 
-- **Pitch from the stem (`repitch`).** Where the vocal stem holds one steady pitch over the
+- **Pitch from the stem (`repitch`).** The stem's pitch is RMVPE's (`rmvpe_hz()`, the RVC
+  project's pitch net through `rmvpe-onnx`, CPU, about 5 s for a 4 min song; cached in
+  `build/f0_rmvpe.npy`). WORLD's harvest, used before, called 40 to 58% of the stem unvoiced
+  and jumped more (on *Despicable Me* 20 jumps over 3 semitones per 1000 frames, RMVPE
+  3). Where the vocal stem holds one steady pitch over the
   middle half of a note (at least 60% voiced, spread under 0.7 semitones), the note takes that
   pitch, in its own octave. GAME's notes and the f0 onsets often catch a scoop, a slide or a
   backing voice; the middle of the note is what the ear hears. Rounding allows for a song that
@@ -435,7 +463,7 @@ Do not put the instrumental in both files: that doubles its level and makes the 
 slider unable to mute it.
 
 For half-spoken tracks where GAME misses syllables, set `"notes": "f0"` in `cover.json`.
-This takes one pitch per aligned syllable from WORLD's vocal-stem analysis. It folds clear
+This takes one pitch per aligned syllable from the stem's RMVPE pitch. It folds clear
 octave jumps toward the range of the line's own singer (a choir line stays high, the lead's lines
 stay low). It is not a separator: lines two singers sing at once still come out as one pitch.
 Set `"grid": 0.125` for a drifting live tempo; timing is rounded to that finer grid.

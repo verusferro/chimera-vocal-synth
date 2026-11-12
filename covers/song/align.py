@@ -108,15 +108,18 @@ def build_line(notes, words, t_next):
         mine.pop()
     own = match(syl, mine)
     ev = []  # [start s, end s, midi, token, label]
-    for s, idx in zip(syl, own):
+    who = []  # the syllable each event belongs to
+    for i, (s, idx) in enumerate(zip(syl, own)):
         tok = s["word"] if s["first"] else None  # the engine splits a word into its syllables itself
         if not idx:  # no note of its own: it splits the note sounding at its vowel
             host = next((e for e in ev if e[0] <= s["t"] < e[1]), ev[-1] if ev else None)
             if host is None:
                 ev.append([s["t"], s["t"] + BEAT / 2, mine[0][2] if mine else 60, tok, s["label"] + "?"])
+                who.append(i)
                 continue
             cut = s["t"] if host[0] + 0.1 < s["t"] < host[1] - 0.1 else (host[0] + host[1]) / 2
             ev.append([cut, host[1], host[2], tok, s["label"] + "?"])
+            who.append(i)
             host[1] = cut
             continue
         for k, j in enumerate(idx):
@@ -125,6 +128,18 @@ def build_line(notes, words, t_next):
                 ev[-1][1] = n[1]
             else:
                 ev.append([n[0], n[1], n[2], tok if k == 0 else "-", s["label"] if k == 0 else "-"])
+                who.append(i)
+    # a syllable sounds as long as the aligner heard it (to its word's next vowel, or the word's
+    # end): GAME often loses a held note (a long last word, a breathy or effected one) or has none
+    # for a syllable, and its note alone would end it early
+    ends = [nxt if nxt is not None else w["end"]
+            for w in words for vs in [[p["start"] for p in w["phones"] if p["ph"] in VOWELS] or [w["start"]]]
+            for nxt in vs[1:] + [None]]
+    for k, e in enumerate(ev):
+        if k + 1 < len(ev) and who[k + 1] == who[k]:
+            continue  # not the syllable's last note
+        later = [f[0] for f in ev if f[0] > e[0]]
+        e[1] = max(e[1], min([ends[who[k]]] + later))
     out = []
     for k, e in enumerate(ev):
         nxt = ev[k + 1][0] if k + 1 < len(ev) else None

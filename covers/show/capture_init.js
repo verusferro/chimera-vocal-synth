@@ -30,7 +30,7 @@
       }
       a.currentTime = cap.now - cap.anims.get(a);
     }
-    const v = document.querySelector("video.duet-video");
+    const v = document.querySelector(".duet-video > video");
     if (v && playhead !== null && Math.abs(v.currentTime - playhead) > 1 / 120) {
       await new Promise((done) => {
         const t = setTimeout(done, 1500);
