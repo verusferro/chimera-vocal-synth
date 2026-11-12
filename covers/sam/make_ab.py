@@ -1,9 +1,10 @@
-"""ARTIST BLOCK: GAME notes + HubertFA words -> two CHIMERA melody files (lead = Caine, second =
-the other six) and the sung/spoken spans, with covers/song/align.py's syllable-to-note matching.
+"""ARTIST BLOCK: GAME notes + HubertFA words -> one CHIMERA melody file per singer (Caine and the
+six guests; the lines all six sing go to each of them) and the sung/spoken spans, with
+covers/song/align.py's syllable-to-note matching.
 
   python covers/sam/make_ab.py [--show]
 
-Writes $WORK/ab/build/{lead,second}.json and spans.json ([{voice, kind, line, start, end, text}],
+Writes $WORK/ab/build/<singer>.json and spans.json ([{voice, kind, line, start, end, text}],
 seconds), which the build script uses to send sung notes to the S.A.M. bank and spoken lines to
 S.A.M. TTS. Every sung line moves by whole octaves to Caine's range (the female roles go an
 octave down), then the whole song moves TRANSPOSE semitones (the build shifts the instrumental
@@ -15,6 +16,7 @@ the key (E flat minor; E minor from the outro on).
 """
 import json
 import os
+import re
 import sys
 
 import numpy as np
@@ -114,11 +116,10 @@ def main():
     f0, rate = pyin["f0"], float(pyin["sr"]) / float(pyin["hop"])
     res = align.build(notes, words)
     res.update({ln: hand(rows) for ln, rows in HAND.items()})
-    voices = {"lead": [], "second": []}
+    voices = {}  # singer -> lines' events, in order of first appearance (Caine first)
     spans = []
     for ln, ev in sorted(res.items()):
         l = lines[ln]
-        voice = "lead" if l["who"] == "Caine" else "second"
         if l["kind"] == "SUNG" and ln not in HAND:
             ev = refine(ev, f0, rate)
         if l["kind"] == "SUNG":
@@ -126,9 +127,12 @@ def main():
             ev = [[e[0], e[1], e[2] + shift, e[3], e[4]] for e in ev]
         if "--show" in sys.argv:
             align.show(ln, ev)
-        voices[voice].append(ev)
-        spans.append({"voice": voice, "kind": l["kind"], "line": ln, "who": l["who"], "text": l["text"],
-                      "start": align.T0 + ev[0][0] * align.BEAT, "end": align.T0 + ev[-1][1] * align.BEAT})
+        # one head per singer: "All six (Pomni, …)" goes to each of them, "Ragatha + others" to Ragatha
+        m = re.match(r"All six \((.*)\)", l["who"])
+        for who in m.group(1).split(", ") if m else [l["who"].split(" + ")[0]]:
+            voices.setdefault(who, []).append(ev)
+            spans.append({"voice": who, "kind": l["kind"], "line": ln, "who": l["who"], "text": l["text"],
+                          "start": align.T0 + ev[0][0] * align.BEAT, "end": align.T0 + ev[-1][1] * align.BEAT})
     os.makedirs(f"{AB}/build", exist_ok=True)
     for name, ls in voices.items():
         ev = sorted((list(e) for l in ls for e in l), key=lambda e: e[0])

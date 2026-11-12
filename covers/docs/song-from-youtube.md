@@ -176,8 +176,23 @@ What to expect and what to fix:
 Write the sung lines, one per line, in `covers/work/lyrics.txt`.
 Our file has 48 sung lines. The last chorus is written out in full.
 
+**Take the words and the singers from published lyrics, never from a speech recognizer.** These
+are public songs: search the web first (Genius, the artist's own lyric sheet or description, the
+official lyric video). Use them for every word and for who sings each line (Genius gives singer
+headers, and italics or brackets for a choir or a second voice). Whisper or captions guess words
+and get them wrong ("maw of forever" came back as "world forever"); we use Whisper only for word
+*times* (step 5b), never for the text. If two published sources differ, prefer the official lyric
+video, then the artist's sheet, then Genius. Add a sung line that the sheet leaves out (an ad-lib)
+only when a published source shows it (for example the lyric video's page).
+
+**One head per singer.** Every role in the sheet gets its own voice in `cover.json` (with
+`enter` set to its first line), also short ones: a choir, a guest, an interjecting voice. Do not
+give one character's lines to another character's head. Lines that two singers sing at the same
+time cannot be aligned one after the other; leave out the background part of those.
+
 Rules (see `lab()` in `covers/song/hfa/hfa.py`):
-- Write what is sung, not what the lyric sheet says. Write numbers as words.
+- Write the published words. Drop bracketed stage notes; keep a bracketed line that is sung (a
+  choir echo) as its own line if it does not overlap the lead. Write numbers as words.
 - Only letters, spaces and apostrophes count. Other marks become spaces.
 - The aligner uses an English dictionary. A word that is not in the dictionary (a made-up name) fails or gets wrong times. For the alignment only, write a similar real word (the S.A.M. cover did this with character names). If a word fails, `read()` in `hfa.py` stops with an assertion that names the segment and the word counts.
 - `lab()` has one hand fix: `pain's` becomes `pains`. Add yours there.
@@ -367,7 +382,7 @@ To record the show as a video: [record-and-host.md](record-and-host.md).
 1. Download audio and the 480p video (step 1).
 2. Separate the stems (step 2). Split lead and backing in the tail if two singers overlap.
 3. Run GAME (step 3).
-4. Write `lyrics.txt` (step 4).
+4. Search the web for the published lyrics and the singer of each line. Write `lyrics.txt` from them (step 4), and plan one voice (head) per singer.
 5. Measure BPM and T0. Set them in `align.py`, `melody.py`, `f0_grid.py`, `second_probe.py` and `build_show.sh`.
 6. Write `covers/work/hfa/regions.json`. Run HubertFA (step 5).
 7. Run `align.py`, read the output, and write the `FIX`, `CHORUS2`, `OUTRO` and `HARMONY` tables in `make_song.py` for your lines. Our tables are for our song: delete them first, then add yours. Expect the first runs to stop with an error until the syllable and note counts agree.
@@ -394,9 +409,20 @@ Each voice can also have `lines` (1-based inclusive ranges, `[[1, 8], [17, 24]]`
 (semitones), `gain`, `look` and `enter`. `hand` replaces a line's notes:
 `{"12": [[start_s, length_s, "C4", "word"], ...]}`.
 It reads `game/vocals.txt`, `hfa/words.json`, `stems/*(vocals)*`, `stems/*(other)*` and
-`video.mp4` from the work folder. It drops stray notes after a line's last syllable (ad-libs and
-backing voices left in the stem), then writes `public/shows/<id>/`. The voices get the original
-vocal stem's loudness.
+`video.mp4` from the work folder. Each line belongs to the first voice whose `lines` hold it.
+Then, for every line that is not a `hand` line:
+
+- **Pitch from the stem (`repitch`).** Where the vocal stem holds one steady pitch over the
+  middle half of a note (at least 60% voiced, spread under 0.7 semitones), the note takes that
+  pitch, in its own octave. GAME's notes and the f0 onsets often catch a scoop, a slide or a
+  backing voice; the middle of the note is what the ear hears. Rounding allows for a song that
+  is not tuned to A440 (Cuban Pete sits 35 cents flat).
+- It drops stray notes after a line's last syllable (ad-libs and backing voices left in the stem).
+- **Holds from the stem (`hold`, on every voice's notes, `hand` lines too).** A note before a
+  rest goes on while the stem's voice goes on at its pitch (up to the next note). The aligner and
+  `fix_words.py` often end a held word early.
+
+It then writes `public/shows/<id>/`. The voices get the original vocal stem's loudness.
 
 `mix.mp3` contains only the new voices. The browser adds `backing.mp3` on the same clock.
 Do not put the instrumental in both files: that doubles its level and makes the backing
@@ -404,16 +430,15 @@ slider unable to mute it.
 
 For half-spoken tracks where GAME misses syllables, set `"notes": "f0"` in `cover.json`.
 This takes one pitch per aligned syllable from WORLD's vocal-stem analysis. It folds clear
-octave jumps toward the lead's range. This is a heuristic for one lead, not a separator for
-overlapping singers. Leave it off for songs with distinct low and high roles.
+octave jumps toward the range of the line's own singer (a choir line stays high, the lead's lines
+stay low). It is not a separator: lines two singers sing at once still come out as one pitch.
 Set `"grid": 0.125` for a drifting live tempo; timing is rounded to that finer grid.
 
 If HubertFA skips an unknown word, create `hfa/respell.json`, for example
 `{"rumba": "rumble", "chicky": "cheeky"}`. Each replacement must be one dictionary word.
 Only the alignment spelling changes; CHIMERA still sings the original word.
 
-We made the `despicable-me` show this way. We found its lyrics (the rap verses are missing on most
-lyric sites) by running Whisper (`faster-whisper`, model `small.en`) on the vocal stem first.
+We made the `despicable-me` show this way, with the published lyrics (LyricFind, via Songfacts).
 
 ## Known limits
 

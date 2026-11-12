@@ -6,7 +6,7 @@ We built two shows this way:
 
 | Show | What it is |
 |------|------------|
-| `artist-block` | St4tic "ARTIST BLOCK". Seven roles, two V1 heads. S.A.M. sings and speaks every role. |
+| `artist-block` | St4tic "ARTIST BLOCK". Seven roles, one V1 head per role. S.A.M. sings and speaks every role. |
 | `switch-off-v1` | The "Switch Off The Game" cover, but V1 (S.A.M.) sings the World Machine part. Niko stays CHIMERA's own child voice. |
 
 Run all commands from the repo root. Setup of the tools is in [setup.md](setup.md). How the song data (stems, notes, words) is made is in [song-from-youtube.md](song-from-youtube.md). How the V1 and Niko heads look is in [wireframe-heads.md](wireframe-heads.md).
@@ -75,7 +75,7 @@ The program writes a 22.05 kHz, 8-bit mono wav. Use upper-case text.
 ```mermaid
 flowchart TD
     A[GAME notes + HubertFA words<br/>from the song] --> B[make_ab.py<br/>melodies, spans, TRANSPOSE]
-    B -->|lead.json, second.json| C[chimera render notes]
+    B -->|one melody per singer| C[chimera render notes]
     C -->|tele| H[Head animation]
     C -->|syllables| D[sam_render.py<br/>UTAU bank + WORLD]
     B -->|spans.json: SUNG| D
@@ -138,13 +138,13 @@ Inputs (all under `covers/work/ab/`, made as in [song-from-youtube.md](song-from
 | `song/lines_timed.json` | each lyric line: start, end, singer, `kind` (`SUNG` or `SPOKEN`), text |
 | `research/f0_vocals.npz` | pYIN pitch of the vocal stem |
 
-It uses `covers/song/align.py` to match syllables to GAME notes. It writes `build/lead.json`, `build/second.json` and `build/spans.json`. The `--show` flag prints each line's notes.
+It uses `covers/song/align.py` to match syllables to GAME notes. It writes `build/<singer>.json` (Caine, Pomni, Jax, …) and `build/spans.json`. The `--show` flag prints each line's notes.
 
 What it does:
 
-- **Two voices.** The `lead` voice is Caine. The `second` voice is everyone else. Each is one head.
+- **One voice per singer.** Each role in `lines_timed.json` (`who`, from Genius' singer headers) gets its own melody and its own head. A line that "All six" sing goes to each of the six. A line "Ragatha + others" goes to Ragatha.
 - **Sung or spoken.** Each line has a `kind` in `lines_timed.json`. We typed it from context and from the audio, because GAME also "finds" notes in speech. Spoken lines still get notes, so the head moves, but the sound comes from TTS.
-- **Pitch fix for sung lines.** The singers are human and parts are rapped, so GAME wanders. A sung note's pitch is the median pYIN pitch in the first 0.3 s of the note. It is moved by whole octaves next to the median of its line. Then it is snapped to the key. The key is E flat minor, and E minor from `OUTRO = 202` s on.
+- **Pitch fix for sung lines.** The singers are human and parts are rapped, so GAME wanders. A sung note's pitch is the median pYIN pitch in the first 0.3 s of the note. (The middle half of the note measured no better here: 66% against 67% pitch-class agreement.) It is moved by whole octaves next to the median of its line. Then it is snapped to the key. The key is E flat minor, and E minor from `OUTRO = 202` s on.
 - **Octave fitting.** Each sung line moves by whole octaves so its median is nearest `CENTER` (MIDI 57). Female roles end up an octave down.
 - **`TRANSPOSE = -7`.** After that, the whole song moves 7 semitones down (to A flat minor). Caine ends up at about 156 Hz. `build_ab.py` moves the instrumental by the same amount.
 - **`HAND` lines.** Some lines have no usable GAME or pYIN notes: the laughs, "Oh.", and the bridge where six voices sing at once. We set them by hand as `(start, length, note, word)`. The bridge notes follow the few pitches pYIN did hold. [They are a guess, not a transcription.]
@@ -173,8 +173,8 @@ It takes one to two minutes. It needs the CHIMERA CLI built (`./target/release/c
    This keeps the actors' pace and pauses. A line without aligned words is spoken whole over the line span. Text in brackets is dropped and characters S.A.M. cannot say are removed. Spoken words get 0.8 gain.
 5. **Instrumental.** It moves the official instrumental by `TRANSPOSE` with ffmpeg `rubberband` (needs an ffmpeg with librubberband). The result is cached as `build/instrumental-7.wav`. Delete it to rebuild.
 6. **Balance.** It measures the RMS of the original vocal stem and instrumental. It sets the voices against the backing at the same ratio, plus `LIFT_DB = 2.0`. S.A.M. sits under the band more than a human voice does, so it needs a bit more level. Change `LIFT_DB` for a new song if the voice is buried or too loud.
-7. **Mix.** The two voices are panned a little apart. The page plays voices and backing at full volume together, so a scale factor `k` keeps the sum below 0.95. It writes `mix.mp3` (voices only) and `backing.mp3`.
-8. **Show.** It copies the melodies and `video.mp4` and writes `show.json` with the two voices. The second head has `enter`: the time the first guest speaks, minus 0.3 s. The head stays out of the scene until then. Each file name carries a `?v=` hash so caches never serve old files.
+7. **Mix.** The singers are panned apart, from 0.3 left to 0.3 right. A line several heads sing (the bridge) sounds once, from its first singer; the other heads mime it (S.A.M. has one voice, so six equal copies would only be louder). The page plays voices and backing at full volume together, so a scale factor `k` keeps the sum below 0.95. It writes `mix.mp3` (voices only) and `backing.mp3`.
+8. **Show.** It copies the melodies and `video.mp4` and writes `show.json` with one V1 head per singer. Each guest's head has `enter`: its first line, minus 0.3 s. A head stays out of the scene until then. Each file name carries a `?v=` hash so caches never serve old files.
 
 Result: `public/shows/artist-block/`. Open `http://127.0.0.1:5317/?show=artist-block` with the dev server running (see [setup.md](setup.md) and [record-and-host.md](record-and-host.md)).
 
@@ -189,7 +189,7 @@ Knobs for a new song:
 | `HAND` | `make_ab.py` | Lines set by hand |
 | `align.BPM`, `align.T0` | `make_ab.py` | Tempo and first beat of the song |
 | `LIFT_DB` | `build_ab.py` | Voice level against the band |
-| the `0.95 / 0.75 / 0.8` pan gains | `build_ab.py` | Left/right balance of each voice |
+| the `-0.3 … 0.3` pans | `build_ab.py` | Left/right place of each singer |
 | the bpm and `downbeat` in `show` | `build_ab.py` | What the page uses for its clock |
 
 ## `build_switch_v1.py`: reuse a CHIMERA song

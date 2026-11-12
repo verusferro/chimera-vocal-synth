@@ -17,6 +17,7 @@ replaces a line's notes ("" token = the word's next syllable). It reads WORK/gam
 `"notes": "f0"`: take each syllable's pitch from the vocal stem's f0 instead of GAME's notes
 (better for rapped or half-spoken songs, where GAME finds few notes).
 """
+import bisect
 import glob
 import hashlib
 import json
@@ -55,16 +56,62 @@ def trim_tail(ev):
     return keep
 
 
-def f0_lines(words):
-    """notes from the words alone, for half-spoken songs where GAME finds few notes: one note per
-    syllable, from its vowel onset to the next syllable (or its word's end, then a rest), pitched at
-    the stem's median f0 over its first 0.25 s, octave-folded next to its line's median"""
+def stem_midi():
+    """the vocal stem's pitch (harvest, 10 ms frames) as float MIDI, NaN where unvoiced; cached"""
     cache = f"{WORK}/build/f0.npy"
     if not os.path.exists(cache):
         y, sr = sf.read(glob.glob(f"{WORK}/stems/*(vocals)*")[0])
         y = np.ascontiguousarray((y.mean(1) if y.ndim > 1 else y).astype(np.float64))
         np.save(cache, pw.harvest(y, sr, f0_floor=60, f0_ceil=900, frame_period=10)[0])
     f0 = np.load(cache)
+    return np.where(f0 > 0, 12 * np.log2(np.maximum(f0, 1e-9) / 440) + 69, np.nan)
+
+
+def frame(b):
+    return int((align.T0 + b * align.BEAT) * 100)
+
+
+def pc_dist(a, b):
+    """semitones between two pitches, octaves aside"""
+    return np.abs((a - b + 6) % 12 - 6)
+
+
+def repitch(ev, mid, tune):
+    """a note's pitch from the stem where the stem holds one steady pitch over the note's middle
+    (GAME's notes and the f0 onsets catch scoops, slides and stray backing voices); the note keeps
+    its octave (the line folds). `tune`: the song's offset from A440 in semitones"""
+    for e in ev:
+        a, b = frame(e[0]), frame(e[1])
+        x = mid[a + (b - a) // 4: b - (b - a) // 4 + 1]
+        v = x[~np.isnan(x)]
+        if len(v) < 3 or len(v) < 0.6 * len(x) or np.std(v) > 0.7:
+            continue
+        p = round(float(np.median(v)) - tune)
+        e[2] = p + 12 * round((e[2] - p) / 12)
+    return ev
+
+
+def hold(ev, mid, starts):
+    """a note before a rest holds on while the stem's voice goes on at its pitch (the aligner and
+    the word fixes end words early; the stem says how long the singer held), up to the next note
+    of any voice (`starts`, sorted: the stem holds all the singers)"""
+    for i, e in enumerate(ev):
+        j = bisect.bisect_right(starts, e[1] - 1e-9)
+        nxt = min(ev[i + 1][0] if i + 1 < len(ev) else e[1] + 8, starts[j] if j < len(starts) else e[1] + 8)
+        if nxt - e[1] < align.GRID:
+            continue
+        k, stop, gap = frame(e[1]), min(frame(nxt) - 5, len(mid)), 0
+        while k < stop and gap < 4:  # a few unvoiced frames (a consonant, a breath of noise) pass
+            gap = gap + 1 if np.isnan(mid[k]) or pc_dist(mid[k], e[2]) > 1.5 else 0
+            k += 1
+        e[1] = max(e[1], min(nxt, align.q((k - gap) / 100)))
+    return ev
+
+
+def f0_lines(words, mid, voice):
+    """notes from the words alone, for half-spoken songs where GAME finds few notes: one note per
+    syllable, from its vowel onset to the next syllable (or its word's end, then a rest), pitched at
+    the stem's median f0 over its first 0.25 s, octave-folded next to its line's median"""
     res = {}
     for ln in sorted({w["line"] for w in words}):
         lw = [w for w in words if w["line"] == ln]
@@ -77,9 +124,9 @@ def f0_lines(words):
             ends.append(min(nxt if nxt - w_end < align.REST else w_end, s["t"] + 1.5))
         raw = []
         for s, e in zip(syl, ends):
-            v = f0[int(s["t"] * 100): max(int(min(s["t"] + 0.25, e) * 100), int(s["t"] * 100) + 1)]
-            v = v[v > 0]
-            raw.append(12 * np.log2(np.median(v) / 440) + 69 if len(v) else None)
+            v = mid[int(s["t"] * 100): max(int(min(s["t"] + 0.25, e) * 100), int(s["t"] * 100) + 1)]
+            v = v[~np.isnan(v)]
+            raw.append(float(np.median(v)) if len(v) else None)
         known = [m for m in raw if m is not None]
         med = float(np.median(known)) if known else 48.0
         ev = []
@@ -90,27 +137,36 @@ def f0_lines(words):
                 b0 = ev[-1][1]
             ev.append([b0, max(b1, b0 + align.GRID), round(m), s["word"] if s["first"] else None, s["label"]])
         res[ln] = ev
-    # a line the stem's backing voices dominate (an octave up, say) comes back to the lead's octave;
-    # a line only a few semitones off the song's median is the lead's own high or low line
-    song = float(np.median([e[2] for ev in res.values() for e in ev]))
-    for ln, ev in res.items():
-        d = song - float(np.median([e[2] for e in ev]))
-        k = 12 * round(d / 12) if abs(d) >= 10 else 0
-        res[ln] = [[e[0], e[1], e[2] + k, *e[3:]] for e in ev]
+    # a line the stem's backing voices dominate (an octave up, say) comes back to its singer's
+    # octave (`voice(line)`: who sings it); a line only a few semitones off its singer's median is
+    # that singer's own high or low line
+    for who in {voice(ln) for ln in res}:
+        lines = [ln for ln in res if voice(ln) == who]
+        song = float(np.median([e[2] for ln in lines for e in res[ln]]))
+        for ln in lines:
+            d = song - float(np.median([e[2] for e in res[ln]]))
+            k = 12 * round(d / 12) if abs(d) >= 10 else 0
+            res[ln] = [[e[0], e[1], e[2] + k, *e[3:]] for e in res[ln]]
     return res
 
 
 def melodies(cfg):
     words = json.load(open(f"{WORK}/hfa/words.json"))
+    mid = stem_midi()
+    sung = mid[~np.isnan(mid)]
+    tune = float(np.angle(np.mean(np.exp(2j * np.pi * sung))) / (2 * np.pi))  # the song's offset from A440, semitones
+    def voice(ln):
+        return next((i for i, v in enumerate(cfg["voices"]) if "lines" not in v or any(a <= ln <= b for a, b in v["lines"])), None)
     if cfg.get("notes") == "f0":
-        res = f0_lines(words)
+        res = f0_lines(words, mid, voice)
     else:
         res = align.build(align.load_notes(f"{WORK}/game/vocals.txt"), words)
+    res = {ln: trim_tail(repitch(ev, mid, tune)) for ln, ev in res.items()}
     res.update({int(ln): hand(rows) for ln, rows in cfg.get("hand", {}).items()})
-    res = {ln: ev if str(ln) in cfg.get("hand", {}) else trim_tail(ev) for ln, ev in res.items()}
+    starts = sorted(e[0] for ev in res.values() for e in ev)
     out = []
-    for v in cfg["voices"]:
-        mine = [ln for ln in sorted(res) if "lines" not in v or any(a <= ln <= b for a, b in v["lines"])]
+    for i, v in enumerate(cfg["voices"]):
+        mine = [ln for ln in sorted(res) if voice(ln) == i]
         if "--show" in sys.argv:
             print(f"== {v['name']}")
             for ln in mine:
@@ -119,7 +175,7 @@ def melodies(cfg):
         for a, b in zip(ev, ev[1:]):  # lines that run into each other: the earlier note gives way
             if b[0] < a[1]:
                 a[1] = b[0]
-        ev = align.fit([e for e in ev if e[1] > e[0]])
+        ev = align.fit(hold([e for e in ev if e[1] > e[0]], mid, starts))
         ev = [[e[0], e[1], e[2] + v.get("shift", 0), *e[3:]] for e in ev]
         out.append(align.melody(ev))
         lo, hi = min(e[2] for e in ev), max(e[2] for e in ev)

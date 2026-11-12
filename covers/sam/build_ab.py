@@ -2,7 +2,7 @@
 
   python covers/sam/build_ab.py               then open http://127.0.0.1:5317/?show=artist-block
 
-1. make_ab.py: the two melodies (lead = Caine's lines, second = everyone else's) and their spans.
+1. make_ab.py: one melody per singer (Caine and the six guests) and their spans.
 2. CHIMERA renders each melody for its telemetry (the heads' mouths) and its syllables; its own
    sound is thrown away.
 3. The sung syllables go to the S.A.M. UTAU bank (sam_render.py), on the same beats.
@@ -29,7 +29,6 @@ AB = f"{WORK}/ab"  # ARTIST BLOCK data: song/ (stems, notes, words), research/, 
 BUILD = f"{AB}/build"
 SHOW = f"{SHOWS}/artist-block"
 SR = 44100
-VOICES = ("lead", "second")
 # S.A.M. sits under the band more than a human voice does: this much louder than the original's
 # vocal stem against its instrumental
 LIFT_DB = 2.0
@@ -77,6 +76,7 @@ def main():
     os.makedirs(SHOW, exist_ok=True)
     run(sys.executable, f"{HERE}/make_ab.py")
     spans = json.load(open(f"{BUILD}/spans.json"))
+    VOICES = list(dict.fromkeys(s["voice"] for s in spans))  # the singers, Caine first
     words = json.load(open(f"{AB}/song/aligned_words.json"))
     renders = [subprocess.Popen(["./target/release/chimera", "render", "notes", f"{BUILD}/{v}.json", f"{BUILD}/chimera-{v}", "male",
                                  "--tele", f"{SHOW}/{v}.tele", "--syllables", f"{BUILD}/{v}.syl.json"], cwd=REPO, stdout=subprocess.DEVNULL)
@@ -84,11 +84,20 @@ def main():
     if any(p.wait() for p in renders):
         sys.exit("chimera render failed")
 
-    # the sung syllables, to the bank
+    # the sung syllables, to the bank; a line several sing (the bridge) sounds once, from its first
+    # singer (S.A.M. has one voice: six equal copies would only be louder), the other heads mime it
+    owner = {}
+    for s in spans:
+        owner.setdefault(s["line"], s["voice"])
+    mine = lambda v, kind: [s for s in spans if s["voice"] == v and s["kind"] == kind and owner[s["line"]] == v]  # noqa: E731
     sams = []
     for v in VOICES:
-        sung = [(s["start"] - 0.01, s["end"]) for s in spans if s["voice"] == v and s["kind"] == "SUNG"]
+        sung = [(s["start"] - 0.01, s["end"]) for s in mine(v, "SUNG")]
         syl = [n for n in json.load(open(f"{BUILD}/{v}.syl.json")) if any(a <= n["t"] < b for a, b in sung)]
+        if os.path.exists(f"{BUILD}/sam-{v}.wav"):
+            os.remove(f"{BUILD}/sam-{v}.wav")
+        if not syl:  # only spoken lines
+            continue
         json.dump(syl, open(f"{BUILD}/{v}.sung.json", "w"))
         sams.append(subprocess.Popen([sys.executable, f"{HERE}/sam_render.py", f"{BUILD}/{v}.sung.json", f"{BUILD}/sam-{v}.wav", "--bpm", "120"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
@@ -107,11 +116,9 @@ def main():
     tracks = {}
     for v in VOICES:
         t = np.zeros(n, np.float32)
-        y, _ = librosa.load(f"{BUILD}/sam-{v}.wav", sr=SR)
-        place(t, y, 0.0)
-        for s in spans:
-            if s["voice"] != v or s["kind"] != "SPOKEN":
-                continue
+        if os.path.exists(f"{BUILD}/sam-{v}.wav"):
+            place(t, librosa.load(f"{BUILD}/sam-{v}.wav", sr=SR)[0], 0.0)
+        for s in mine(v, "SPOKEN"):
             ws = [w for w in words if w["line"] == s["line"]]
             for w in ws or [{"word": s["text"], "start": s["start"], "end": s["end"]}]:
                 place(t, 0.8 * say(w["word"], w["end"] - w["start"]), w["start"])
@@ -121,7 +128,9 @@ def main():
     rms = lambda y: float(np.sqrt(np.mean(np.square(y))))  # noqa: E731
     ov, _ = librosa.load(f"{AB}/song/vocals.wav", sr=SR)
     oi, _ = librosa.load(f"{AB}/song/instrumental.wav", sr=SR)
-    voices = np.stack([0.95 * tracks["lead"] + 0.75 * tracks["second"], 0.8 * tracks["lead"] + 0.95 * tracks["second"]])
+    # the singers spread a little across the stereo field, as they would stand
+    pans = np.linspace(-0.3, 0.3, len(VOICES))
+    voices = sum(np.stack([(1 - p) * tracks[v], (1 + p) * tracks[v]]) for v, p in zip(VOICES, pans))
     voices *= rms(ov) / rms(oi) * rms(backing) / rms(voices) * 10 ** (LIFT_DB / 20)
     # the page plays both at full volume at first: together they must not clip
     k = 0.95 / float(np.max(np.abs(voices + backing)))
@@ -135,15 +144,14 @@ def main():
     # each address carries its content's hash, so a CDN or browser cache can't serve old files
     def ver(f):
         return f"{f}?v={hashlib.md5(open(f'{SHOW}/{f}', 'rb').read()).hexdigest()[:8]}"
-    first_guest = min(s["start"] for s in spans if s["voice"] == "second")
+    first = {v: min(s["start"] for s in spans if s["voice"] == v) for v in VOICES}
     show = {
         "title": "ARTIST BLOCK (St4tic) - V1 / S.A.M. cover",
         "audio": ver("mix.mp3"), "backing": ver("backing.mp3"), "video": ver("video.mp4"),
         "bpm": 120, "downbeat": 0.022,
-        "voices": [
-            {"name": "V1 as Caine", "tele": ver("lead.tele"), "melody": ver("lead.json"), "look": "v1"},
-            {"name": "V1 as the cast", "tele": ver("second.tele"), "melody": ver("second.json"), "look": "v1", "enter": round(first_guest - 0.3, 2)},
-        ],
+        # one V1 head per singer; each guest's head comes in just before its first line
+        "voices": [{"name": f"V1 as {v}", "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "look": "v1",
+                    **({"enter": round(first[v] - 0.3, 2)} if i else {})} for i, v in enumerate(VOICES)],
     }
     json.dump(show, open(f"{SHOW}/show.json", "w"), indent=1)
     print(f"{SHOW}: voices peak {np.max(np.abs(voices * k)):.2f}, scale {k:.2f}")
