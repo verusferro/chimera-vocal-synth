@@ -90,7 +90,7 @@ def main():
         "bpm": 96, "downbeat": 0,
         "voices": [
             {"name": "V1", "tele": ver("lead.tele"), "melody": ver("lead.json"), "look": "v1"},
-            {"name": "Niko", "tele": ver("second.tele"), "melody": ver("second.json"), "look": "niko", "enter": 179},
+            {"name": "Niko", "tele": ver("second.tele"), "melody": ver("second.json"), "look": "niko", "on": [[179, None]]},
         ],
     }
     json.dump(show, open(f"{SHOW}/show.json", "w"), indent=1)

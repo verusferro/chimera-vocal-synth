@@ -186,7 +186,7 @@ video, then the artist's sheet, then Genius. Add a sung line that the sheet leav
 only when a published source shows it (for example the lyric video's page).
 
 **One head per singer.** Every role in the sheet gets its own voice in `cover.json` (with
-`enter` set to its first line), also short ones: a choir, a guest, an interjecting voice. Do not
+`enter` set to its first line, or `"leave": true` for a role with only a few lines), also short ones: a choir, a guest, an interjecting voice. Do not
 give one character's lines to another character's head. Lines that two singers sing at the same
 time cannot be aligned one after the other; leave out the background part of those.
 
@@ -244,6 +244,11 @@ HubertFA is exact where it is right. In a busy stem (a choir, ad-libs, a line mi
 Whisper (`faster-whisper`, `medium.en`) on the vocal stem once, matches its words to the lyrics in
 order, and moves only the words the aligner put more than 0.35 s from Whisper's time. Words
 between two matched words that fell outside them follow the earlier one at 0.4 s each.
+Two guards keep a wrong match from moving good words: a Whisper word outside the region that
+`hfa/regions.json` gives its line is ignored, and when two matches leave the lyric words between
+them no room (under 0.12 s a word), the one further from the aligner's time is dropped. Without
+the second guard, in *Won't Be Slain Here* "Day" matched a repeat 16 s later and pressed seven
+lines of the Princess into 1 s, and her "forever" before them held 6 s.
 The aligner's output stays in `hfa/words_aligner.json`; run the script again after each
 `final.py` run.
 
@@ -370,7 +375,7 @@ Knobs for a new song, all at the top of the script or in the `show.json` block:
 - The ffmpeg filter levels. Our voices are mixed down a little: raise `volume=` if your voices are quiet.
 - In `show.json`: `title`, `bpm` and `downbeat` (the heads nod on the beat; `downbeat` is the first beat of a bar, in seconds), the voice `name`s, and `video`.
 - `"look": "niko"` on the second voice gives it the Niko wireframe head (see [wireframe-heads.md](wireframe-heads.md)).
-- `"enter": 179` keeps the second head off screen until 179 s, so it arrives as a surprise in the last chorus. Remove `enter` if both voices sing from the start.
+- `"on": [[179, null]]` keeps the second head off screen until 179 s, so it arrives as a surprise in the last chorus. Remove `on` if both voices sing from the start.
 - A show can also hold `"spell": {"owr": "our"}`: it writes a syllable that you spelled for the dictionary the way it should read on screen.
 - The shows `switch-off-v1` and `artist-block` use other singers: see [sam-singing.md](sam-singing.md).
 
@@ -406,7 +411,8 @@ COVERS_WORK=covers/work/<song> python covers/song/cover.py --show
 ```
 
 Each voice can also have `lines` (1-based inclusive ranges, `[[1, 8], [17, 24]]`), `shift`
-(semitones), `gain`, `look` and `enter`. `hand` replaces a line's notes:
+(semitones), `gain`, `look`, `enter` (s: the head comes on then and stays) and `leave` (`true`: the
+head is on screen only while it sings, 0.3 s around its lines). `hand` replaces a line's notes:
 `{"12": [[start_s, length_s, "C4", "word"], ...]}`.
 It reads `game/vocals.txt`, `hfa/words.json`, `stems/*(vocals)*`, `stems/*(other)*` and
 `video.mp4` from the work folder. Each line belongs to the first voice whose `lines` hold it.

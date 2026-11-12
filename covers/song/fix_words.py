@@ -48,12 +48,16 @@ def move(w, t0, t1):
     w["start"], w["end"] = round(t0, 3), round(t1, 3)
 
 
-def fix(words, wh):
+def fix(words, wh, win=None):
+    """`win(line)`: the (start, end) s of the region the aligner had for that line, or None; a
+    Whisper word outside it is a match to the same words sung elsewhere (a repeated line)"""
     norm = lambda s: re.sub(r"[^a-z]", "", s.lower())  # noqa: E731
     pairs = []
     sm = difflib.SequenceMatcher(None, [norm(w["word"]) for w in words], [norm(x["w"]) for x in wh], autojunk=False)
     for blk in sm.get_matching_blocks():
         pairs += [(blk.a + k, wh[blk.b + k]) for k in range(blk.size)]
+    if win:
+        pairs = [(i, x) for i, x in pairs if (r := win(words[i]["line"])) is None or r[0] <= x["s"] <= r[1]]
     # keep only matches whose times rise with the lyrics (a short word like "your" can match a
     # Whisper word from the line before): the longest rising run
     best, prev = [1] * len(pairs), [-1] * len(pairs)
@@ -66,12 +70,14 @@ def fix(words, wh):
         keep.append(pairs[j])
         j = prev[j]
     pairs = dict(reversed(keep))
-    # a match that leaves the lyric words before it no room (Whisper heard other words there) is
-    # no anchor
-    idx = sorted(pairs)
-    for a, b in zip(idx, idx[1:]):
-        if a in pairs and b - a > 1 and pairs[b]["s"] - pairs[a]["e"] < 0.12 * (b - a - 1):
-            del pairs[b]
+    # two matches that leave the lyric words between them no room (Whisper heard other words there,
+    # or the same words sung later): the one further from the aligner's time is no anchor
+    while True:
+        idx = sorted(pairs)
+        tight = next(((a, b) for a, b in zip(idx, idx[1:]) if b - a > 1 and pairs[b]["s"] - pairs[a]["e"] < 0.12 * (b - a - 1)), None)
+        if tight is None:
+            break
+        del pairs[max(tight, key=lambda i: abs(words[i]["start"] - pairs[i]["s"]))]
     moved = 0
     for i, x in pairs.items():
         w = words[i]
@@ -106,7 +112,11 @@ def main():
     if not os.path.exists(src):
         shutil.copy(f"{H}/words.json", src)
     words = json.load(open(src))
-    moved, spread, matched = fix(words, whisper_words())
+    win = None
+    if os.path.exists(f"{H}/regions.json"):  # [name, start, end, first line, last line + 1], 0-based lines
+        regions = json.load(open(f"{H}/regions.json"))
+        win = lambda ln: next(((a, b) for _, a, b, l0, l1 in regions if l0 < ln <= l1), None)  # noqa: E731
+    moved, spread, matched = fix(words, whisper_words(), win)
     json.dump(words, open(f"{H}/words.json", "w"), indent=1)
     print(f"{len(words)} words, {matched} matched to Whisper; moved {moved}, spread {spread}")
 

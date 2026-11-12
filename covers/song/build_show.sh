@@ -49,7 +49,7 @@ cat > "$SHOW/show.json" <<EOF
   "downbeat": 0,
   "voices": [
     { "name": "World Machine", "tele": "$(v lead.tele)", "melody": "$(v lead.json)" },
-    { "name": "Niko", "tele": "$(v second.tele)", "melody": "$(v second.json)", "look": "niko", "enter": 179 }
+    { "name": "Niko", "tele": "$(v second.tele)", "melody": "$(v second.json)", "look": "niko", "on": [[179, null]] }
   ]
 }
 EOF

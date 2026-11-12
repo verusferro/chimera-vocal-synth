@@ -9,7 +9,7 @@ We used it to make three covers:
 | Show | Song | Voices | Heads |
 |---|---|---|---|
 | `switch-off` | Musiclide, "Switch Off The Game" | CHIMERA sings both parts | CHIMERA's own head (the World Machine) and Niko (OneShot) |
-| `artist-block` | St4tic, "ARTIST BLOCK" | The S.A.M. UTAU voicebank sings, S.A.M. text-to-speech speaks | One V1 head (ULTRAKILL) per role |
+| `artist-block` | St4tic, "ARTIST BLOCK" | The S.A.M. UTAU voicebank sings, S.A.M. text-to-speech speaks | V1 (ULTRAKILL) as Caine, CHIMERA's own head for each guest |
 | `switch-off-v1` | Musiclide, "Switch Off The Game" | S.A.M. sings the World Machine's part, CHIMERA sings Niko | V1 and Niko |
 
 ![V1 and Niko](img/v1-and-niko.png)

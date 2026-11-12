@@ -23,6 +23,21 @@ class WhisperGuidedFix(unittest.TestCase):
         self.assertTrue(all(79.4 <= words[i]["start"] < 80.2 for i in (3, 4)))
         self.assertEqual(words[2]["phones"][0]["start"], 78.8)  # phones move with their word
 
+    def test_a_match_outside_the_lines_region_is_no_anchor(self):
+        # the line is sung at 171 s; Whisper heard the same words again only at 187 s (a repeat)
+        words = [dict(word("day", 171.0, 171.3), line=54), dict(word("dreams", 171.3, 171.8), line=54)]
+        wh = [{"w": " day", "s": 186.5, "e": 186.7}, {"w": " dreams", "s": 186.7, "e": 186.9}]
+        fix(words, wh, lambda ln: (170.3, 179.0))
+        self.assertEqual([w["start"] for w in words], [171.0, 171.3])
+
+    def test_an_anchor_that_crushes_the_lines_after_it_is_dropped(self):
+        # "day" matched a later repeat (16 s off) and would squeeze 3 words into 0.1 s before "end"
+        words = [word("day", 170.4, 170.8), word("a", 171.0, 171.2), word("b", 172.0, 172.2),
+                 word("c", 180.0, 180.2), word("end", 186.8, 187.2)]
+        wh = [{"w": " day", "s": 186.5, "e": 186.6}, {"w": " end", "s": 186.7, "e": 187.1}]
+        fix(words, wh)
+        self.assertEqual([w["start"] for w in words][:4], [170.4, 171.0, 172.0, 180.0])
+
 
 if __name__ == "__main__":
     unittest.main()

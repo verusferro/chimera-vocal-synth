@@ -41,17 +41,25 @@ interface ShowFile {
   bpm?: number;
   downbeat?: number;
   spell?: Record<string, string>;
-  /** `enter` (s): the head stays off screen until then (a surprise), the others sharing the width */
-  voices: { name: string; tele: string; melody?: string; look?: Look; enter?: number }[];
+  /** `on` (s): when the head is on screen, `[[from, to], …]` (`to` null: to the end); before, after
+   * and between, it is off screen, the others sharing the width. Absent: always on */
+  voices: { name: string; tele: string; melody?: string; look?: Look; on?: [number, number | null][] }[];
 }
 
 interface Loaded {
   show: ShowFile;
-  voices: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; enter: number }[];
+  voices: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; on: [number, number | null][] }[];
 }
+
+const isOn = (v: { on: [number, number | null][] }, t: number): boolean => v.on.some(([a, b]) => t >= a && (b === null || t < b));
+/** a head that comes (or goes) during the song: it slides in each time it comes on */
+const late = (v: { on: [number, number | null][] }): boolean => v.on.length > 1 || v.on[0][0] > 0 || v.on[0][1] !== null;
 
 /** the heads as the face screen shows them by default, less the measurement labels */
 const VIEW: ViewFlags = { pressure: true, particles: true, grid: false, calipers: false };
+
+/** heads per row: up to three side by side, four and more on two rows (tall narrow columns crop the heads) */
+const columns = (n: number): number => (n >= 4 ? Math.ceil(n / 2) : n);
 
 async function fetchOk(url: string): Promise<Response> {
   const r = await fetch(url);
@@ -102,7 +110,7 @@ export function DuetPage(props: { id: string }) {
           return null;
         }
       });
-      const voices = show.voices.map((v, i) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], look: v.look, enter: v.enter ?? 0 }));
+      const voices = show.voices.map((v, i) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], look: v.look, on: v.on ?? [[0, null]] }));
       await transport.load(audio, backing);
       if (live) setLoaded({ show, voices });
     })().catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
@@ -122,6 +130,23 @@ export function DuetPage(props: { id: string }) {
     };
   }, [transport]);
 
+  // keys: space plays and pauses, the left and right arrows step 5 s back and on (a focused button
+  // or text field keeps its own use of the key; on the sliders these keys go to the song)
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (!transport || !loaded || (e.target as HTMLElement).closest?.("button, select, textarea, input:not([type=range])")) return;
+      const step = e.code === "ArrowRight" ? 5 : e.code === "ArrowLeft" ? -5 : 0;
+      if (e.code === "Space") {
+        if (transport.isPlaying) transport.pause();
+        else transport.play();
+      } else if (step) transport.seek(transport.state.time + step); // seek clamps to the song
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [transport, loaded]);
+
   if (error)
     return (
       <div className="duet">
@@ -130,6 +155,7 @@ export function DuetPage(props: { id: string }) {
     );
   const st = transport?.state ?? { playing: false, time: 0, duration: 0, epoch: 0 };
   const title = loaded?.show.title ?? "Loading…";
+  const entered = loaded?.voices.filter((v) => isOn(v, st.time)).length || 1;
   return (
     <div className="duet">
       <header className="duet-top">
@@ -145,8 +171,8 @@ export function DuetPage(props: { id: string }) {
           </select>
         )}
       </header>
-      <main className={loaded?.voices.some((v) => v.enter > 0 && st.time >= v.enter) ? "duet-heads split" : "duet-heads"} style={{ "--voices": loaded?.voices.filter((v) => st.time >= v.enter).length || 1 } as React.CSSProperties}>
-        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={st.time < v.enter ? " waiting" : v.enter > 0 ? " entering" : ""} show={loaded.show} transport={transport} facing={i > 0 && i === loaded.voices.length - 1 ? -1 : 1} />) : <p className="duet-msg">Loading the song…</p>}
+      <main className={`duet-heads${loaded?.voices.some((v) => late(v) && isOn(v, st.time)) ? " split" : ""}${entered >= 4 ? " rows" : ""}`} style={{ "--voices": columns(entered) } as React.CSSProperties}>
+        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={!isOn(v, st.time) ? " waiting" : late(v) ? " entering" : ""} show={loaded.show} transport={transport} facing={i > 0 && i === loaded.voices.length - 1 ? -1 : 1} />) : <p className="duet-msg">Loading the song…</p>}
         {loaded?.show.video && transport && videoOn && <CornerVideo src={base + loaded.show.video} transport={transport} />}
       </main>
       <footer className="duet-bar">

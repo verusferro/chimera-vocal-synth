@@ -6,7 +6,7 @@ We built two shows this way:
 
 | Show | What it is |
 |------|------------|
-| `artist-block` | St4tic "ARTIST BLOCK". Seven roles, one V1 head per role. S.A.M. sings and speaks every role. |
+| `artist-block` | St4tic "ARTIST BLOCK". Seven roles, one head per role: V1 plays Caine, the six guests keep CHIMERA's own head. S.A.M. sings and speaks every role. |
 | `switch-off-v1` | The "Switch Off The Game" cover, but V1 (S.A.M.) sings the World Machine part. Niko stays CHIMERA's own child voice. |
 
 Run all commands from the repo root. Setup of the tools is in [setup.md](setup.md). How the song data (stems, notes, words) is made is in [song-from-youtube.md](song-from-youtube.md). How the V1 and Niko heads look is in [wireframe-heads.md](wireframe-heads.md).
@@ -174,7 +174,7 @@ It takes one to two minutes. It needs the CHIMERA CLI built (`./target/release/c
 5. **Instrumental.** It moves the official instrumental by `TRANSPOSE` with ffmpeg `rubberband` (needs an ffmpeg with librubberband). The result is cached as `build/instrumental-7.wav`. Delete it to rebuild.
 6. **Balance.** It measures the RMS of the original vocal stem and instrumental. It sets the voices against the backing at the same ratio, plus `LIFT_DB = 2.0`. S.A.M. sits under the band more than a human voice does, so it needs a bit more level. Change `LIFT_DB` for a new song if the voice is buried or too loud.
 7. **Mix.** The singers are panned apart, from 0.3 left to 0.3 right. A line several heads sing (the bridge) sounds once, from its first singer; the other heads mime it (S.A.M. has one voice, so six equal copies would only be louder). The page plays voices and backing at full volume together, so a scale factor `k` keeps the sum below 0.95. It writes `mix.mp3` (voices only) and `backing.mp3`.
-8. **Show.** It copies the melodies and `video.mp4` and writes `show.json` with one V1 head per singer. Each guest's head has `enter`: its first line, minus 0.3 s. A head stays out of the scene until then. Each file name carries a `?v=` hash so caches never serve old files.
+8. **Show.** It copies the melodies and `video.mp4` and writes `show.json` with one head per singer. Caine's head wears the V1 look (`"look": "v1"`); the guests keep CHIMERA's own head. A guest's head is on screen only while it sings (`on`: 0.3 s before each of its lines to 0.3 s after, breaks under 4 s joined). Each file name carries a `?v=` hash so caches never serve old files.
 
 Result: `public/shows/artist-block/`. Open `http://127.0.0.1:5317/?show=artist-block` with the dev server running (see [setup.md](setup.md) and [record-and-host.md](record-and-host.md)).
 

@@ -6,10 +6,11 @@
 WORK/cover.json:
   {"id": "despicable-me", "title": "...", "bpm": 85, "t0": 0.32, "grid": 0.25,
    "voices": [{"name": "Gru", "body": "male", "lines": [[1, 40]], "shift": 0, "gain": 1.0,
-               "look": "niko", "enter": 0}],
+               "look": "niko", "enter": 0, "leave": false}],
    "hand": {"12": [[start_s, length_s, "C4", "word"], ...]}}
 `lines` are 1-based inclusive ranges of lyrics.txt lines (omit = every line); `shift` moves the
-voice by semitones (octaves keep it in key); `look`, `enter`: see docs/ui-changes.md. `hand`
+voice by semitones (octaves keep it in key); `look`: see docs/ui-changes.md; `enter` (s): the head
+comes on then and stays; `leave`: the head is on only while it sings (0.3 s around its lines). `hand`
 replaces a line's notes ("" token = the word's next syllable). It reads WORK/game/vocals.txt (GAME,
 --pitch-format number), WORK/hfa/words.json, WORK/stems/*(vocals)* and *(other)*, WORK/video.mp4.
 --show prints every line's syllables on their notes. Writes WORK/build/ and public/shows/<id>/.
@@ -36,6 +37,7 @@ import align  # noqa: E402
 from paths import REPO, SHOWS, WORK  # noqa: E402
 
 SR = 44100
+GAP_S = 4.0  # s: a leaving head stays on through a shorter break between its lines
 NAMES = {n: i for i, n in enumerate(align.NAMES)}
 
 
@@ -187,6 +189,24 @@ def active_rms(y):
     f = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
     return float(np.sqrt(np.mean(np.square(f[f > 0.1 * f.max()]))))
 
+def on_screen(v):
+    """a voice's `on` for show.json: with `leave`, its lines' spans (0.3 s around, as a head
+    enters; spans less than GAP_S apart joined so a head doesn't flicker); with `enter`, from then on"""
+    if v.get("leave"):
+        words = json.load(open(f"{WORK}/hfa/words.json"))
+        spans = sorted((min(w["start"] for w in ws) - 0.3, max(w["end"] for w in ws) + 0.3)
+                       for ln in sorted({w["line"] for w in words}) if any(a <= ln <= b for a, b in v["lines"])
+                       for ws in [[w for w in words if w["line"] == ln]])
+        out = []
+        for a, b in spans:
+            if out and a - out[-1][1] < GAP_S:
+                out[-1][1] = max(out[-1][1], b)
+            else:
+                out.append([a, b])
+        return [[round(a, 2), round(b, 2)] for a, b in out]
+    return [[v["enter"], None]] if "enter" in v else None
+
+
 
 def main():
     cfg = json.load(open(f"{WORK}/cover.json"))
@@ -228,7 +248,7 @@ def main():
         return f"{f}?v={hashlib.md5(open(f'{show}/{f}', 'rb').read()).hexdigest()[:8]}"
     out = {"title": cfg["title"], "audio": ver("mix.mp3"), "backing": ver("backing.mp3"), "bpm": align.BPM, "downbeat": align.T0,
            "voices": [{"name": v["name"], "tele": ver(f"v{i}.tele"), "melody": ver(f"v{i}.json"),
-                       **({"look": v["look"]} if "look" in v else {}), **({"enter": v["enter"]} if "enter" in v else {})}
+                       **({"look": v["look"]} if "look" in v else {}), **({"on": on} if (on := on_screen(v)) else {})}
                       for i, v in enumerate(cfg["voices"])]}
     if os.path.exists(f"{show}/video.mp4"):
         out["video"] = ver("video.mp4")

@@ -53,11 +53,17 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
   it only seeks if the picture is more than 0.2 s off. When paused, it seeks at 0.03 s. Chasing
   every frame of drift would stutter. The video has no sound: the sound is the mix. A **Hide
   video** button in the bottom bar takes it off and puts it back.
-- **Late heads (`enter`).** A voice with `enter: 179` stays off screen until second 179. Then it
-  slides in from the right, and the head already there gives up half the width. The CSS classes
-  `.waiting` and `.entering` do this. A waiting head is drawn off screen at its final size, so it
-  is ready when it comes in. We used it for a surprise: Niko joins late in *Switch Off*, and the
-  second singer joins at 3.97 s in *ARTIST BLOCK*.
+- **Heads that come and go (`on`).** A voice with `on: [[179, null]]` stays off screen until
+  second 179 and then stays (`null`: to the end). `on: [[80, 86.5], [156, 162]]` is on screen only
+  in those windows. Each time it comes on it slides in from the right, and the heads already there
+  make room; when it goes, the others take the width back at once (no exit animation). The CSS
+  classes `.waiting` and `.entering` do this. A waiting head is drawn off screen at its final
+  size, so it is ready when it comes in. Without `on`, a head is on screen the whole song. We used
+  it for a surprise (Niko joins late in *Switch Off*) and for singers who only have a few lines
+  (the three Voices in *Won't Be Slain Here*, the six guests in *ARTIST BLOCK*: 0.3 s before
+  their line to 0.3 s after, breaks under 4 s joined).
+- **Keys.** Space plays and pauses; the left and right arrows step 5 s back and on. A focused
+  button or text field keeps the key for itself; on a slider the keys go to the song.
 - **Look.** `voices[i].look` is passed down to the 3D view as `HeadFeed.look`. Allowed values are
   `"niko"` and `"v1"`. Without `look`, the head is CHIMERA's own skull and face.
 - **Redraw rate.** The clock text and slider refresh every 100 ms (was 250 ms).
@@ -89,9 +95,14 @@ Each voice:
 | `tele` | string | yes | The `.tele` file from `chimera render notes ... --tele` |
 | `melody` | string | no | The melody JSON the voice was rendered from. Writes the sung syllables at the mouth |
 | `look` | `"niko"` or `"v1"` | no | A costume over the head |
-| `enter` | number | no | Second at which the head comes in. Before that it is off screen |
+| `on` | `[[from, to or null], ...]` | no | When the head is on screen (s). Absent: the whole song |
 
 The last voice (if there is more than one) looks to the left. The others look to the right.
+
+Up to three heads stand side by side. From four on they fill two rows (`columns()` in
+`DuetPage.tsx`: half the count, rounded up, per row), and the corner video moves to the bottom
+right (`.duet-heads.rows`). The count is of the heads on screen, so a row fills as heads enter.
+The entrance animation still assumes one head joining one row.
 
 The voices' renders and the mix must start at sample 0. The page only plays the mix and replays
 each `.tele` at the playhead. It does not synthesize anything.
@@ -111,7 +122,7 @@ Example (this is the *Switch Off* show; file names are ours):
   "downbeat": 0,
   "voices": [
     { "name": "World Machine", "tele": "lead.tele?v=bc77f959", "melody": "lead.json?v=caaf05bb" },
-    { "name": "Niko", "tele": "second.tele?v=51afbc0b", "melody": "second.json?v=18be3cb1", "look": "niko", "enter": 179 }
+    { "name": "Niko", "tele": "second.tele?v=51afbc0b", "melody": "second.json?v=18be3cb1", "look": "niko", "on": [[179, null]] }
   ]
 }
 ```

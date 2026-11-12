@@ -32,6 +32,8 @@ SR = 44100
 # S.A.M. sits under the band more than a human voice does: this much louder than the original's
 # vocal stem against its instrumental
 LIFT_DB = 2.0
+# the guests' heads (CHIMERA's own; only Caine wears V1): the body each actor's voice suggests
+FEMALE = {"Pomni", "Ragatha", "Gangle", "Zooble"}
 
 
 def run(*cmd, **kw):
@@ -78,7 +80,7 @@ def main():
     spans = json.load(open(f"{BUILD}/spans.json"))
     VOICES = list(dict.fromkeys(s["voice"] for s in spans))  # the singers, Caine first
     words = json.load(open(f"{AB}/song/aligned_words.json"))
-    renders = [subprocess.Popen(["./target/release/chimera", "render", "notes", f"{BUILD}/{v}.json", f"{BUILD}/chimera-{v}", "male",
+    renders = [subprocess.Popen(["./target/release/chimera", "render", "notes", f"{BUILD}/{v}.json", f"{BUILD}/chimera-{v}", "female" if v in FEMALE else "male",
                                  "--tele", f"{SHOW}/{v}.tele", "--syllables", f"{BUILD}/{v}.syl.json"], cwd=REPO, stdout=subprocess.DEVNULL)
                for v in VOICES]
     if any(p.wait() for p in renders):
@@ -144,14 +146,25 @@ def main():
     # each address carries its content's hash, so a CDN or browser cache can't serve old files
     def ver(f):
         return f"{f}?v={hashlib.md5(open(f'{SHOW}/{f}', 'rb').read()).hexdigest()[:8]}"
-    first = {v: min(s["start"] for s in spans if s["voice"] == v) for v in VOICES}
+    def on(v):
+        """when a guest's head is on screen: 0.3 s around each of its lines, breaks under 4 s joined"""
+        out = []
+        for s in sorted((s for s in spans if s["voice"] == v), key=lambda s: s["start"]):
+            a, b = s["start"] - 0.3, s["end"] + 0.3
+            if out and a - out[-1][1] < 4.0:
+                out[-1][1] = max(out[-1][1], b)
+            else:
+                out.append([a, b])
+        return [[round(a, 2), round(b, 2)] for a, b in out]
     show = {
         "title": "ARTIST BLOCK (St4tic) - V1 / S.A.M. cover",
         "audio": ver("mix.mp3"), "backing": ver("backing.mp3"), "video": ver("video.mp4"),
         "bpm": 120, "downbeat": 0.022,
-        # one V1 head per singer; each guest's head comes in just before its first line
-        "voices": [{"name": f"V1 as {v}", "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "look": "v1",
-                    **({"enter": round(first[v] - 0.3, 2)} if i else {})} for i, v in enumerate(VOICES)],
+        # one head per singer: V1 plays Caine, the guests keep CHIMERA's own head and are on screen
+        # only while they sing
+        "voices": [{"name": "V1 as Caine", "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "look": "v1"} if not i else
+                   {"name": v, "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "on": on(v)}
+                   for i, v in enumerate(VOICES)],
     }
     json.dump(show, open(f"{SHOW}/show.json", "w"), indent=1)
     print(f"{SHOW}: voices peak {np.max(np.abs(voices * k)):.2f}, scale {k:.2f}")
