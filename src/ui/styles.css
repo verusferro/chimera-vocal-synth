@@ -219,6 +219,8 @@ button.primary.large {
   width: 100%;
   height: 100%;
   display: block;
+  /* while its pane is being resized, the picture keeps its shape (AnatomyView3D refits after) */
+  object-fit: cover;
   touch-action: none;
 }
 

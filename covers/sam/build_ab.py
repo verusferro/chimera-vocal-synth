@@ -41,21 +41,19 @@ def run(*cmd, **kw):
 
 
 def say(text, length):
-    """S.A.M. saying `text`, its silence trimmed, stretched to `length` s (at most 2.5x faster:
-    a word squeezed harder only runs a little long)"""
+    """S.A.M. saying `text`, its silence trimmed, fitted to `length` s: at most 2.5x faster (a word
+    squeezed harder only runs a little long) and at most 1.25x slower (stretched further, S.A.M.'s
+    voice turns to a buzz: a word given more time than that ends early instead)"""
     words = re.sub(r"\(.*?\)\s*", "", text).upper()
     words = re.sub(r"[^A-Z0-9 .,?!'-]", "", words).strip(" -") or "HA"
     raw = f"{BUILD}/tts.wav"
     run(f"{VENDOR}/sam-tts/sam", "-wav", raw, words, stdout=subprocess.DEVNULL)
     y, sr = sf.read(raw, dtype="float32")
     y = librosa.effects.trim(y - float(np.median(y)), top_db=35)[0]
-    tempo, chain = min(len(y) / sr / max(length, 0.05), 2.5), []
+    tempo, chain = min(max(len(y) / sr / max(length, 0.05), 0.8), 2.5), []
     while tempo > 2.0:
         chain.append("atempo=2.0")
         tempo /= 2.0
-    while tempo < 0.5:
-        chain.append("atempo=0.5")
-        tempo /= 0.5
     chain.append(f"atempo={tempo:.5f}")
     sf.write(raw, y, sr)
     out = f"{BUILD}/tts_fit.wav"
@@ -108,7 +106,7 @@ def main():
 
     # the instrumental, moved with the melody (Rubber Band, through ffmpeg)
     sys.path.insert(0, HERE)
-    from make_ab import TRANSPOSE
+    from make_ab import HAND, TRANSPOSE
     inst = f"{BUILD}/instrumental{TRANSPOSE:+d}.wav"
     if not os.path.exists(inst):
         run("ffmpeg", "-v", "error", "-y", "-i", f"{AB}/song/instrumental_official.wav", "-af",
@@ -121,7 +119,9 @@ def main():
         if os.path.exists(f"{BUILD}/sam-{v}.wav"):
             place(t, librosa.load(f"{BUILD}/sam-{v}.wav", sr=SR)[0], 0.0)
         for s in mine(v, "SPOKEN"):
-            ws = [w for w in words if w["line"] == s["line"]]
+            # a hand-set line is spoken where its head speaks it (its words' times are the aligner's
+            # guess, which can sit on another singer's held note)
+            ws = [] if s["line"] in HAND else [w for w in words if w["line"] == s["line"]]
             for w in ws or [{"word": s["text"], "start": s["start"], "end": s["end"]}]:
                 place(t, 0.8 * say(w["word"], w["end"] - w["start"]), w["start"])
         tracks[v] = t

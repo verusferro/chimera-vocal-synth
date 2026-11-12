@@ -45,10 +45,10 @@ MINOR = (0, 2, 3, 5, 7, 8, 10)  # natural minor, from the tonic
 # six voices at once, where neither GAME nor pYIN finds a line, so its notes follow the few pitches
 # pYIN did hold (B flat 3 to B 3 at 155-157 s, E flat 3 to A flat 3 at 158-160 s, E to F sharp 5 in
 # the second half, an octave down here) on a plain rhythm: a guess, not a transcription. The
-# laughs and "Oh." have no aligned words.
+# laughs and "Oh." have no GAME notes.
 HAND = {
     47: [(103.3, 0.2, "C4", "ha"), (103.55, 0.2, "C4", "ha"), (103.8, 0.3, "C4", "ha")],
-    66: [(137.4, 0.45, "C4", "Oh")],
+    66: [(136.45, 0.7, "C4", "Oh")],  # the video shows Caine's face 136.4-137.3, then the chorus's "AH" at 137.4
     71: [(154.0, 0.5, "A#3", "No"), (154.5, 1.5, "A#3", "more"), (156.0, 1.5, "B3", "crying"), (157.5, 0.5, "A#3", "")],
     72: [(158.0, 0.5, "D#3", "No"), (158.5, 0.75, "G#3", "use"), (159.25, 1.0, "G#3", "trying"), (160.25, 1.25, "F#3", "")],
     73: [(162.0, 0.5, "D#4", "Digital"), (162.5, 0.5, "D#4", ""), (163.0, 0.75, "C#4", ""), (163.75, 1.0, "F4", "landscape"), (164.75, 1.0, "D#4", "")],

@@ -165,11 +165,23 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       gl.setSize(Math.max(1, w), Math.max(1, h), false);
       r.resize(Math.max(1, w), Math.max(1, h));
     };
-    // Resizing a canvas blanks it, and the observer runs after the frame's own draw: draw again
-    // now, or a pane whose size is being animated shows nothing until the animation ends.
-    const ro = new ResizeObserver(() => {
+    // A pane whose size is being animated (a duet head coming or going) changes size every frame,
+    // and resizing the canvas, the GL buffers and the framing every frame lagged the page: it is
+    // refitted at most every 120 ms (and once more after the last change); in between, the picture
+    // is only scaled to the pane, keeping its shape (CSS `object-fit: cover`). Resizing a canvas
+    // blanks it, and the observer runs after the frame's own draw: draw again right away.
+    let settle = 0;
+    let fitted = 0;
+    const refitNow = () => {
+      fitted = performance.now();
       fit();
       if (drawn) frame(performance.now());
+    };
+    const ro = new ResizeObserver(() => {
+      clearTimeout(settle);
+      const wait = fitted + 120 - performance.now();
+      if (wait <= 0) refitNow();
+      else settle = window.setTimeout(refitNow, wait);
     });
     ro.observe(wrap);
     let raf = 0;
@@ -267,6 +279,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      clearTimeout(settle);
       canvas.removeEventListener("dblclick", home);
       canvas.removeEventListener("pointermove", onHover);
       canvas.removeEventListener("pointerleave", offHead);

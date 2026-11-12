@@ -167,10 +167,10 @@ It takes one to two minutes. It needs the CHIMERA CLI built (`./target/release/c
 4. **Spoken parts.** For each `SPOKEN` span it takes the words of that line from `aligned_words.json`. For each word it:
    - runs `covers/vendor/sam-tts/sam -wav` on the word alone,
    - removes silence,
-   - stretches the word to the length of the original word (HubertFA times) with ffmpeg `atempo`, at most 2.5x faster,
+   - stretches the word to the length of the original word (HubertFA times) with ffmpeg `atempo`, at most 2.5x faster and at most 1.25x slower (stretched further, S.A.M.'s voice turns into a loud buzz: a word given more time ends early instead),
    - and puts it at the original word start, with a 5 ms fade.
 
-   This keeps the actors' pace and pauses. A line without aligned words is spoken whole over the line span. Text in brackets is dropped and characters S.A.M. cannot say are removed. Spoken words get 0.8 gain.
+   This keeps the actors' pace and pauses. A line without aligned words, or a `HAND` line, is spoken whole over the line span (so the voice and the head's mouth agree). Text in brackets is dropped and characters S.A.M. cannot say are removed. Spoken words get 0.8 gain.
 5. **Instrumental.** It moves the official instrumental by `TRANSPOSE` with ffmpeg `rubberband` (needs an ffmpeg with librubberband). The result is cached as `build/instrumental-7.wav`. Delete it to rebuild.
 6. **Balance.** It measures the RMS of the original vocal stem and instrumental. It sets the voices against the backing at the same ratio, plus `LIFT_DB = 2.0`. S.A.M. sits under the band more than a human voice does, so it needs a bit more level. Change `LIFT_DB` for a new song if the voice is buried or too loud.
 7. **Mix.** The singers are panned apart, from 0.3 left to 0.3 right. A line several heads sing (the bridge) sounds once, from its first singer; the other heads mime it (S.A.M. has one voice, so six equal copies would only be louder). The page plays voices and backing at full volume together, so a scale factor `k` keeps the sum below 0.95. It writes `mix.mp3` (voices only) and `backing.mp3`.
