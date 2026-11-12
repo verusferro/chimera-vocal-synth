@@ -75,10 +75,13 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
 - **Look.** `voices[i].look` is passed down to the 3D view as `HeadFeed.look`. Allowed values are
   `"niko"` and `"v1"`. Without `look`, the head is CHIMERA's own skull and face.
 - **Redraw rate.** The clock text and slider refresh every 100 ms (was 250 ms).
-- **Resizing a head (`AnatomyView3D`).** While a head grows or shrinks its pane changes size every
-  frame. Refitting the canvas, the GL buffers and the framing every frame lagged the page, so it
-  refits at most every 120 ms (and once after the last change); in between the picture is only
-  scaled to the pane with `object-fit: cover`, keeping its shape.
+- **Resizing a head (`AnatomyView3D`).** While a head grows or shrinks, every pane in the row
+  changes size every frame. Refitting the canvas, the GL buffers and the framing every frame
+  lagged the page, and refitting every 120 ms made the heads pulse bigger and smaller. Now the 3D
+  canvas has its own pixel size, centred in its pane, which clips it: while the row moves
+  (`HeadFeed.holdFit`, from `isMoving()` in `DuetPage.tsx`) a pane shows more or less of the same
+  picture, and each canvas is refitted once when the move is over (the framing then eases to the
+  new size in 0.4 s).
 
 ## show.json
 

@@ -40,6 +40,8 @@ export interface HeadFeed {
   look?: Look;
   /** true while the head is off screen (a show's head waiting to come on): nothing is drawn */
   hidden?(): boolean;
+  /** true while the head's pane is being animated: the canvas is fitted to it when this ends */
+  holdFit?(): boolean;
 }
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -161,27 +163,28 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       h = b.height;
       canvas.width = Math.max(1, Math.round(w * dpr));
       canvas.height = Math.max(1, Math.round(h * dpr));
+      // the canvas keeps this size until the next fit (centred in its pane, which clips it): a
+      // pane that grows or shrinks shows more or less of the same picture, never a rescaled one
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
       gl.setPixelRatio(dpr);
       gl.setSize(Math.max(1, w), Math.max(1, h), false);
       r.resize(Math.max(1, w), Math.max(1, h));
     };
-    // A pane whose size is being animated (a duet head coming or going) changes size every frame,
-    // and resizing the canvas, the GL buffers and the framing every frame lagged the page: it is
-    // refitted at most every 120 ms (and once more after the last change); in between, the picture
-    // is only scaled to the pane, keeping its shape (CSS `object-fit: cover`). Resizing a canvas
+    // A pane whose size is being animated (a duet head coming or going) changes size every frame.
+    // Refitting on every change lagged the page, and refitting every 120 ms made the heads pulse
+    // bigger and smaller: while the feed says its row is moving (`holdFit`), the canvas keeps its
+    // size (the pane clips it), and it is fitted once when the move is over. Resizing a canvas
     // blanks it, and the observer runs after the frame's own draw: draw again right away.
-    let settle = 0;
-    let fitted = 0;
+    let pending = false;
     const refitNow = () => {
-      fitted = performance.now();
+      pending = false;
       fit();
       if (drawn) frame(performance.now());
     };
     const ro = new ResizeObserver(() => {
-      clearTimeout(settle);
-      const wait = fitted + 120 - performance.now();
-      if (wait <= 0) refitNow();
-      else settle = window.setTimeout(refitNow, wait);
+      if (w > 0 && feedRef.current?.holdFit?.()) pending = true;
+      else refitNow();
     });
     ro.observe(wrap);
     let raf = 0;
@@ -271,6 +274,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     const loop = (now: number) => {
       // a hidden head costs nothing once it has turned to its pose (the first 2 s, so it comes in
       // posed); it is drawn again on the frame it comes back
+      if (pending && !feedRef.current?.holdFit?.()) refitNow();
       if (feedRef.current?.hidden?.() && now - born > 2000) last = now;
       else frame(now);
       raf = requestAnimationFrame(loop);
@@ -279,7 +283,6 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      clearTimeout(settle);
       canvas.removeEventListener("dblclick", home);
       canvas.removeEventListener("pointermove", onHover);
       canvas.removeEventListener("pointerleave", offHead);

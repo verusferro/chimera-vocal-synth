@@ -59,6 +59,9 @@ const MOVE_S = 0.7;
 const isLeaving = (v: { on: [number, number | null][] }, t: number): boolean => !isOn(v, t) && v.on.some(([, b]) => b !== null && t >= b && t < b + MOVE_S);
 /** a head that comes (or goes) during the song: it grows in each time it comes on */
 const late = (v: { on: [number, number | null][] }): boolean => v.on.length > 1 || v.on[0][0] > 0 || v.on[0][1] !== null;
+/** some head of the row is growing in or shrinking away (each head waits to refit its canvas) */
+const isMoving = (vs: { on: [number, number | null][] }[], t: number): boolean =>
+  vs.some((v) => v.on.some(([a, b]) => (a > 0 && t >= a && t < a + MOVE_S) || (b !== null && t >= b && t < b + MOVE_S)));
 /** s: windows of different heads less than this apart are one section (a dialogue, a shared verse) */
 const SECTION_GAP_S = 2;
 
@@ -174,6 +177,7 @@ export function DuetPage(props: { id: string }) {
     );
   const st = transport?.state ?? { playing: false, time: 0, duration: 0, epoch: 0 };
   const title = loaded?.show.title ?? "Loading…";
+  const moving = !!loaded && isMoving(loaded.voices, st.time);
   return (
     <div className="duet">
       <header className="duet-top">
@@ -190,7 +194,7 @@ export function DuetPage(props: { id: string }) {
         )}
       </header>
       <main className="duet-heads">
-        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={isLeaving(v, st.time) ? " leaving" : !isOn(v, st.time) ? " waiting" : late(v) ? " entering" : ""} show={loaded.show} transport={transport} facing={v.facing} />) : <p className="duet-msg">Loading the song…</p>}
+        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={isLeaving(v, st.time) ? " leaving" : !isOn(v, st.time) ? " waiting" : late(v) ? " entering" : ""} moving={moving} show={loaded.show} transport={transport} facing={v.facing} />) : <p className="duet-msg">Loading the song…</p>}
         {loaded?.show.video && transport && videoOn && <CornerVideo src={base + loaded.show.video} transport={transport} />}
       </main>
       <footer className="duet-bar">
@@ -270,10 +274,12 @@ function CornerVideo(props: { src: string; transport: Transport }) {
 }
 
 /** one voice's head; the last of several turns to face the others */
-function Head(props: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; stage: "" | " waiting" | " entering" | " leaving"; show: ShowFile; transport: Transport; facing: 1 | -1 }) {
+function Head(props: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; stage: "" | " waiting" | " entering" | " leaving"; moving: boolean; show: ShowFile; transport: Transport; facing: 1 | -1 }) {
   const { track, show, transport, words } = props;
   const stageRef = useRef(props.stage);
   stageRef.current = props.stage;
+  const movingRef = useRef(props.moving);
+  movingRef.current = props.moving;
   const feedRef = useRef<HeadFeed | null>(null);
   // the syllable at the mouth, written on the side the face looks to
   const overlayRef = useRef<OverlayFn | undefined>(undefined);
@@ -292,6 +298,7 @@ function Head(props: { name: string; track: TeleTrack; words: SungWords | null; 
       facing: props.facing,
       look: props.look,
       hidden: () => stageRef.current === " waiting",
+      holdFit: () => movingRef.current,
       frame: () => {
         const t = transport.time();
         const i = track.indexAt(t);
