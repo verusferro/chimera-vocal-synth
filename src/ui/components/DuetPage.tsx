@@ -59,6 +59,22 @@ const MOVE_S = 0.7;
 const isLeaving = (v: { on: [number, number | null][] }, t: number): boolean => !isOn(v, t) && v.on.some(([, b]) => b !== null && t >= b && t < b + MOVE_S);
 /** a head that comes (or goes) during the song: it slides in each time it comes on */
 const late = (v: { on: [number, number | null][] }): boolean => v.on.length > 1 || v.on[0][0] > 0 || v.on[0][1] !== null;
+/** s: windows of different heads less than this apart are one section (a dialogue, a shared verse) */
+const SECTION_GAP_S = 2;
+
+/** heads that sing in one section stay until its last line, and all go together at its end: each
+ * window that ends is stretched to the end of the section it belongs to (windows of any head that
+ * overlap or follow within SECTION_GAP_S) */
+function together(ons: [number, number | null][][]): [number, number | null][][] {
+  const wins = ons.flat().filter((w): w is [number, number] => w[1] !== null).sort((x, y) => x[0] - y[0]);
+  const sections: [number, number][] = [];
+  for (const [a, b] of wins) {
+    const s = sections.at(-1);
+    if (s && a <= s[1] + SECTION_GAP_S) s[1] = Math.max(s[1], b);
+    else sections.push([a, b]);
+  }
+  return ons.map((on) => on.map(([a, b]) => [a, b === null ? null : sections.find(([s0, s1]) => a >= s0 && a <= s1)![1]]));
+}
 
 /** the heads as the face screen shows them by default, less the measurement labels */
 const VIEW: ViewFlags = { pressure: true, particles: true, grid: false, calipers: false };
@@ -112,7 +128,8 @@ export function DuetPage(props: { id: string }) {
           return null;
         }
       });
-      const voices = show.voices.map((v, i, all) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], look: v.look, on: v.on ?? [[0, null]], facing: v.facing ?? (i > 0 && i === all.length - 1 ? -1 : 1) }));
+      const ons = together(show.voices.map((v) => v.on ?? [[0, null]]));
+      const voices = show.voices.map((v, i, all) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], look: v.look, on: ons[i], facing: v.facing ?? (i > 0 && i === all.length - 1 ? -1 : 1) }));
       await transport.load(audio, backing);
       if (live) setLoaded({ show, voices });
     })().catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));

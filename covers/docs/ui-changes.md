@@ -60,7 +60,10 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
   in those windows. Each time it comes on it slides in from the right while the heads already
   there make room; when it goes it is the same, run backwards: it leaves the row at once, the
   others widen to take its room, and it slides out to the right over them from where it stood
-  (0.7 s each way). The CSS classes `.waiting`, `.entering` and `.leaving` do
+  (0.7 s each way). Heads that sing in one section (their windows overlap or follow within 2 s,
+  `together()` in `DuetPage.tsx`) stay until the section's last line and all go together at its
+  end: the Stubborn voice stays on while the Broken voice answers, and Ragatha waits for Pomni in
+  the intro of *ARTIST BLOCK*. The CSS classes `.waiting`, `.entering` and `.leaving` do
   this. A waiting head is drawn off screen at its final size for its first 2 s (it turns to its
   pose there), then not drawn at all until it comes on (`HeadFeed.hidden`): seven heads with six
   waiting cost about one. Without `on`, a head is on screen the whole song. We used
