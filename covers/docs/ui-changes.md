@@ -58,8 +58,9 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
 - **Heads that come and go (`on`).** A voice with `on: [[179, null]]` stays off screen until
   second 179 and then stays (`null`: to the end). `on: [[80, 86.5], [156, 162]]` is on screen only
   in those windows. Each time it comes on it slides in from the right while the heads already
-  there make room; when it goes it slides back out the same way (0.7 s, holding its place), and
-  then the others take the width back. The CSS classes `.waiting`, `.entering` and `.leaving` do
+  there make room; when it goes it is the same, run backwards: it leaves the row at once, the
+  others widen to take its room, and it slides out to the right over them from where it stood
+  (0.7 s each way). The CSS classes `.waiting`, `.entering` and `.leaving` do
   this. A waiting head is drawn off screen at its final size for its first 2 s (it turns to its
   pose there), then not drawn at all until it comes on (`HeadFeed.hidden`): seven heads with six
   waiting cost about one. Without `on`, a head is on screen the whole song. We used
@@ -104,7 +105,10 @@ look to the right. In *ARTIST BLOCK* every guest has `facing: -1`: they look lef
 
 The heads on screen stand side by side in one row. When one comes or goes, the others move to
 their new places and widths over 0.7 s (`useLayoutEffect` in `DuetPage.tsx` animates each head
-from its old box to its new one); the head itself slides in from the right, or out the same way.
+from its old box to its new one, or from where it is on screen if it was still moving, so a head
+coming on while another goes does not jump). The corner `<video>` sits in a box of its own
+(`.duet-video`): a browser extension (a video speed controller) puts its controls next to the
+video, and next to it in the heads' grid they took a head's place and broke the row.
 
 The voices' renders and the mix must start at sample 0. The page only plays the mix and replays
 each `.tele` at the playhead. It does not synthesize anything.

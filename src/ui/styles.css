@@ -2788,6 +2788,9 @@ input[type="range"]::-moz-range-thumb {
   height: 100vh;
   height: 100dvh;
   padding: 6px 16px max(10px, env(safe-area-inset-bottom));
+  /* nothing in the page (a head sliding out, an extension's overlay) may make the window scroll */
+  position: relative;
+  overflow: hidden;
 }
 
 .duet-top {
@@ -2832,7 +2835,9 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
 }
 
-/* the show's video: a small picture over the first head's lower corner, out of the faces' way */
+/* the show's video: a small picture over the first head's lower corner, out of the faces' way. The
+   <video> sits in a box of its own: a browser extension (a speed controller) puts its controls
+   beside the video, and beside it in the heads' grid they took a head's place and broke the row */
 .duet-video {
   position: absolute;
   left: 10px;
@@ -2842,6 +2847,12 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--frame, #133954);
   background: #000;
   pointer-events: none;
+}
+
+.duet-video > video {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .duet-head .screen-body {
@@ -2859,15 +2870,18 @@ input[type="range"]::-moz-range-thumb {
   visibility: hidden;
 }
 
-/* its entrance: it slides in from the right; on its way out it slides back out the same way, still
-   holding its place until it has gone. The other heads move to their new places and sizes in
-   DuetPage.tsx (a box-to-box animation that works for any count) */
+/* its entrance: it slides in from the right while the others make room. On its way out it leaves
+   the row at once (the others widen) and slides out the way it came, laid over the row at the
+   place it stood (DuetPage.tsx sets that place, and moves the others box to box) */
 .duet-head.entering {
   animation: duet-slide-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .duet-head.leaving {
-  animation: duet-slide-out 0.7s cubic-bezier(0.8, 0.2, 0.8, 0.2) both;
+  position: absolute;
+  z-index: 1;
+  /* the entrance's curve, run backwards */
+  animation: duet-slide-out 0.7s cubic-bezier(0.8, 0, 0.8, 0.2) both;
 }
 
 @keyframes duet-slide-in {
