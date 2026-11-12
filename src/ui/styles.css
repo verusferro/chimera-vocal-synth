@@ -2827,7 +2827,6 @@ input[type="range"]::-moz-range-thumb {
   position: relative;
   display: grid;
   grid-template-columns: repeat(var(--voices, 2), minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
   overflow: hidden;
@@ -2845,13 +2844,6 @@ input[type="range"]::-moz-range-thumb {
   pointer-events: none;
 }
 
-/* two rows of heads: the bottom row's first head would hide behind it; the bottom right is the
-   empty cell (an odd count) or the back of the last head, which faces the others */
-.duet-heads.rows .duet-video {
-  left: auto;
-  right: 10px;
-}
-
 .duet-head .screen-body {
   min-height: 180px;
 }
@@ -2867,15 +2859,15 @@ input[type="range"]::-moz-range-thumb {
   visibility: hidden;
 }
 
-/* its entrance: it slides in from the right while the head already there gives up half the
-   width, the two edges moving together.
-   ponytail: written for one head joining one; a third voice needs the widths worked out per count */
+/* its entrance: it slides in from the right; on its way out it slides back out the same way, still
+   holding its place until it has gone. The other heads move to their new places and sizes in
+   DuetPage.tsx (a box-to-box animation that works for any count) */
 .duet-head.entering {
   animation: duet-slide-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.duet-heads.split > .duet-head:not(.entering) {
-  animation: duet-make-room 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+.duet-head.leaving {
+  animation: duet-slide-out 0.7s cubic-bezier(0.8, 0.2, 0.8, 0.2) both;
 }
 
 @keyframes duet-slide-in {
@@ -2884,18 +2876,15 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-@keyframes duet-make-room {
-  from {
-    width: calc(200% + 8px);
-  }
+@keyframes duet-slide-out {
   to {
-    width: 100%;
+    transform: translateX(calc(100% + 8px));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .duet-head.entering,
-  .duet-heads.split > .duet-head:not(.entering) {
+  .duet-head.leaving {
     animation: none;
   }
 }

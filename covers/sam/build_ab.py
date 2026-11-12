@@ -160,10 +160,10 @@ def main():
         "title": "ARTIST BLOCK (St4tic) - V1 / S.A.M. cover",
         "audio": ver("mix.mp3"), "backing": ver("backing.mp3"), "video": ver("video.mp4"),
         "bpm": 120, "downbeat": 0.022,
-        # one head per singer: V1 plays Caine, the guests keep CHIMERA's own head and are on screen
-        # only while they sing
-        "voices": [{"name": "V1 as Caine", "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "look": "v1"} if not i else
-                   {"name": v, "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "on": on(v)}
+        # one head per singer: V1 plays Caine, the guests keep CHIMERA's own head, face him (left) and
+        # are on screen only while they sing
+        "voices": [{"name": "V1 as Caine", "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "look": "v1", "facing": 1} if not i else
+                   {"name": v, "tele": ver(f"{v}.tele"), "melody": ver(f"{v}.json"), "on": on(v), "facing": -1}
                    for i, v in enumerate(VOICES)],
     }
     json.dump(show, open(f"{SHOW}/show.json", "w"), indent=1)

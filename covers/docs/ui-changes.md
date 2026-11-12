@@ -50,15 +50,19 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
 
 - **Corner video.** If `video` is set, a muted `<video>` plays in the lower left corner over the
   first head. A small component (`CornerVideo`) keeps it on the transport's playhead. When playing,
-  it only seeks if the picture is more than 0.2 s off. When paused, it seeks at 0.03 s. Chasing
-  every frame of drift would stutter. The video has no sound: the sound is the mix. A **Hide
+  it takes up a drift of more than 0.05 s by playing up to 10% faster or slower, and seeks only
+  if the picture is more than 1 s off (a seek stalls the decoder, which then falls behind again:
+  with a 0.2 s limit a busy page can seek over and over). When paused, it seeks at
+  0.03 s. The video has no sound: the sound is the mix. A **Hide
   video** button in the bottom bar takes it off and puts it back.
 - **Heads that come and go (`on`).** A voice with `on: [[179, null]]` stays off screen until
   second 179 and then stays (`null`: to the end). `on: [[80, 86.5], [156, 162]]` is on screen only
-  in those windows. Each time it comes on it slides in from the right, and the heads already there
-  make room; when it goes, the others take the width back at once (no exit animation). The CSS
-  classes `.waiting` and `.entering` do this. A waiting head is drawn off screen at its final
-  size, so it is ready when it comes in. Without `on`, a head is on screen the whole song. We used
+  in those windows. Each time it comes on it slides in from the right while the heads already
+  there make room; when it goes it slides back out the same way (0.7 s, holding its place), and
+  then the others take the width back. The CSS classes `.waiting`, `.entering` and `.leaving` do
+  this. A waiting head is drawn off screen at its final size for its first 2 s (it turns to its
+  pose there), then not drawn at all until it comes on (`HeadFeed.hidden`): seven heads with six
+  waiting cost about one. Without `on`, a head is on screen the whole song. We used
   it for a surprise (Niko joins late in *Switch Off*) and for singers who only have a few lines
   (the three Voices in *Won't Be Slain Here*, the six guests in *ARTIST BLOCK*: 0.3 s before
   their line to 0.3 s after, breaks under 4 s joined).
@@ -67,9 +71,6 @@ All of this is in `DuetPage.tsx`. The file header holds the show format (see the
 - **Look.** `voices[i].look` is passed down to the 3D view as `HeadFeed.look`. Allowed values are
   `"niko"` and `"v1"`. Without `look`, the head is CHIMERA's own skull and face.
 - **Redraw rate.** The clock text and slider refresh every 100 ms (was 250 ms).
-
-Limit: the entrance animation is written for one head joining one other head. A third voice needs
-the CSS widths worked out per count (see the `ponytail:` note in `styles.css`).
 
 ## show.json
 
@@ -96,13 +97,14 @@ Each voice:
 | `melody` | string | no | The melody JSON the voice was rendered from. Writes the sung syllables at the mouth |
 | `look` | `"niko"` or `"v1"` | no | A costume over the head |
 | `on` | `[[from, to or null], ...]` | no | When the head is on screen (s). Absent: the whole song |
+| `facing` | `1` or `-1` | no | Which way the head looks: right or left |
 
-The last voice (if there is more than one) looks to the left. The others look to the right.
+Without `facing`, the last voice (if there is more than one) looks to the left and the others
+look to the right. In *ARTIST BLOCK* every guest has `facing: -1`: they look left, towards Caine.
 
-Up to three heads stand side by side. From four on they fill two rows (`columns()` in
-`DuetPage.tsx`: half the count, rounded up, per row), and the corner video moves to the bottom
-right (`.duet-heads.rows`). The count is of the heads on screen, so a row fills as heads enter.
-The entrance animation still assumes one head joining one row.
+The heads on screen stand side by side in one row. When one comes or goes, the others move to
+their new places and widths over 0.7 s (`useLayoutEffect` in `DuetPage.tsx` animates each head
+from its old box to its new one); the head itself slides in from the right, or out the same way.
 
 The voices' renders and the mix must start at sample 0. The page only plays the mix and replays
 each `.tele` at the playhead. It does not synthesize anything.

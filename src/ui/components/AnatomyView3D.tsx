@@ -38,6 +38,8 @@ export interface HeadFeed {
   facing?: 1 | -1;
   /** a costume over the head (a show's `voices[i].look`) */
   look?: Look;
+  /** true while the head is off screen (a show's head waiting to come on): nothing is drawn */
+  hidden?(): boolean;
 }
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -253,8 +255,12 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       }
       drawn = true;
     };
+    const born = performance.now();
     const loop = (now: number) => {
-      frame(now);
+      // a hidden head costs nothing once it has turned to its pose (the first 2 s, so it comes in
+      // posed); it is drawn again on the frame it comes back
+      if (feedRef.current?.hidden?.() && now - born > 2000) last = now;
+      else frame(now);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

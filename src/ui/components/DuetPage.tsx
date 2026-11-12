@@ -15,7 +15,7 @@
  * `spell` ({"owr": "our"}) writes a syllable spelled for the dictionary as it should read;
  * `video` (a silent picture on the mix's clock, e.g. the original's lyric video) plays in a corner.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnatomyView3D, type HeadFeed } from "./AnatomyView3D.tsx";
 import { Screen } from "./Screen.tsx";
 import { TeleTrack } from "../../show/tele.ts";
@@ -42,24 +42,26 @@ interface ShowFile {
   downbeat?: number;
   spell?: Record<string, string>;
   /** `on` (s): when the head is on screen, `[[from, to], …]` (`to` null: to the end); before, after
-   * and between, it is off screen, the others sharing the width. Absent: always on */
-  voices: { name: string; tele: string; melody?: string; look?: Look; on?: [number, number | null][] }[];
+   * and between, it is off screen, the others sharing the width. Absent: always on.
+   * `facing`: 1 looks right, -1 left; absent: the last of several looks left, the others right */
+  voices: { name: string; tele: string; melody?: string; look?: Look; on?: [number, number | null][]; facing?: 1 | -1 }[];
 }
 
 interface Loaded {
   show: ShowFile;
-  voices: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; on: [number, number | null][] }[];
+  voices: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; on: [number, number | null][]; facing: 1 | -1 }[];
 }
 
 const isOn = (v: { on: [number, number | null][] }, t: number): boolean => v.on.some(([a, b]) => t >= a && (b === null || t < b));
+/** s: a head's slide in or out, and the others' making or taking back room (the CSS keyframes' length) */
+const MOVE_S = 0.7;
+/** a head that went off less than MOVE_S ago: still sliding out, still holding its place */
+const isLeaving = (v: { on: [number, number | null][] }, t: number): boolean => !isOn(v, t) && v.on.some(([, b]) => b !== null && t >= b && t < b + MOVE_S);
 /** a head that comes (or goes) during the song: it slides in each time it comes on */
 const late = (v: { on: [number, number | null][] }): boolean => v.on.length > 1 || v.on[0][0] > 0 || v.on[0][1] !== null;
 
 /** the heads as the face screen shows them by default, less the measurement labels */
 const VIEW: ViewFlags = { pressure: true, particles: true, grid: false, calipers: false };
-
-/** heads per row: up to three side by side, four and more on two rows (tall narrow columns crop the heads) */
-const columns = (n: number): number => (n >= 4 ? Math.ceil(n / 2) : n);
 
 async function fetchOk(url: string): Promise<Response> {
   const r = await fetch(url);
@@ -110,7 +112,7 @@ export function DuetPage(props: { id: string }) {
           return null;
         }
       });
-      const voices = show.voices.map((v, i) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], look: v.look, on: v.on ?? [[0, null]] }));
+      const voices = show.voices.map((v, i, all) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], look: v.look, on: v.on ?? [[0, null]], facing: v.facing ?? (i > 0 && i === all.length - 1 ? -1 : 1) }));
       await transport.load(audio, backing);
       if (live) setLoaded({ show, voices });
     })().catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
@@ -147,6 +149,26 @@ export function DuetPage(props: { id: string }) {
     return () => window.removeEventListener("keydown", key);
   }, [transport, loaded]);
 
+  // when heads come or go, the others move to their new places and sizes over MOVE_S rather than
+  // jump (the head itself slides in or out in CSS): each head's box is kept between layouts
+  const mainRef = useRef<HTMLElement | null>(null);
+  const layout = useRef<{ key: string; boxes: Map<Element, DOMRect> }>({ key: "", boxes: new Map() });
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const heads = [...main.querySelectorAll<HTMLElement>(":scope > .duet-head:not(.waiting)")];
+    const key = heads.map((h) => [...main.children].indexOf(h)).join(",");
+    if (key === layout.current.key) return;
+    const boxes = new Map(heads.map((h) => [h, h.getBoundingClientRect()] as const));
+    if (layout.current.key && !matchMedia("(prefers-reduced-motion: reduce)").matches)
+      for (const [h, r] of boxes) {
+        const p = layout.current.boxes.get(h);
+        if (!p || h.classList.contains("leaving") || Math.max(Math.abs(p.left - r.left), Math.abs(p.top - r.top), Math.abs(p.width - r.width), Math.abs(p.height - r.height)) < 1) continue;
+        h.animate([{ width: `${p.width}px`, height: `${p.height}px`, transform: `translate(${p.left - r.left}px, ${p.top - r.top}px)` }, { width: `${r.width}px`, height: `${r.height}px`, transform: "none" }], { duration: MOVE_S * 1000, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+      }
+    layout.current = { key, boxes };
+  });
+
   if (error)
     return (
       <div className="duet">
@@ -155,7 +177,7 @@ export function DuetPage(props: { id: string }) {
     );
   const st = transport?.state ?? { playing: false, time: 0, duration: 0, epoch: 0 };
   const title = loaded?.show.title ?? "Loading…";
-  const entered = loaded?.voices.filter((v) => isOn(v, st.time)).length || 1;
+  const entered = loaded?.voices.filter((v) => isOn(v, st.time) || isLeaving(v, st.time)).length || 1;
   return (
     <div className="duet">
       <header className="duet-top">
@@ -171,8 +193,8 @@ export function DuetPage(props: { id: string }) {
           </select>
         )}
       </header>
-      <main className={`duet-heads${loaded?.voices.some((v) => late(v) && isOn(v, st.time)) ? " split" : ""}${entered >= 4 ? " rows" : ""}`} style={{ "--voices": columns(entered) } as React.CSSProperties}>
-        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={!isOn(v, st.time) ? " waiting" : late(v) ? " entering" : ""} show={loaded.show} transport={transport} facing={i > 0 && i === loaded.voices.length - 1 ? -1 : 1} />) : <p className="duet-msg">Loading the song…</p>}
+      <main ref={mainRef} className="duet-heads" style={{ "--voices": entered } as React.CSSProperties}>
+        {loaded && transport ? loaded.voices.map((v, i) => <Head key={i} name={v.name} track={v.track} words={v.words} look={v.look} stage={isLeaving(v, st.time) ? " leaving" : !isOn(v, st.time) ? " waiting" : late(v) ? " entering" : ""} show={loaded.show} transport={transport} facing={v.facing} />) : <p className="duet-msg">Loading the song…</p>}
         {loaded?.show.video && transport && videoOn && <CornerVideo src={base + loaded.show.video} transport={transport} />}
       </main>
       <footer className="duet-bar">
@@ -229,8 +251,11 @@ function CornerVideo(props: { src: string; transport: Transport }) {
       const v = ref.current;
       if (!v) return;
       const t = props.transport.time(), playing = props.transport.isPlaying;
-      // a picture a little off is fine; chasing every frame's drift would stutter
-      if (Math.abs(v.currentTime - t) > (playing ? 0.2 : 0.03)) v.currentTime = t;
+      // playing: a small drift is taken up by playing a little faster or slower; only a big one
+      // (a seek, a stall) seeks, since a seek makes the decoder stall again and fall further behind
+      const d = t - v.currentTime;
+      if (Math.abs(d) > (playing ? 1 : 0.03)) v.currentTime = t;
+      v.playbackRate = playing && Math.abs(d) > 0.05 ? 1 + Math.max(-0.1, Math.min(0.1, d / 2)) : 1;
       if (playing && v.paused) void v.play().catch(() => {});
       else if (!playing && !v.paused) v.pause();
     };
@@ -245,8 +270,10 @@ function CornerVideo(props: { src: string; transport: Transport }) {
 }
 
 /** one voice's head; the last of several turns to face the others */
-function Head(props: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; stage: "" | " waiting" | " entering"; show: ShowFile; transport: Transport; facing: 1 | -1 }) {
+function Head(props: { name: string; track: TeleTrack; words: SungWords | null; look?: Look; stage: "" | " waiting" | " entering" | " leaving"; show: ShowFile; transport: Transport; facing: 1 | -1 }) {
   const { track, show, transport, words } = props;
+  const stageRef = useRef(props.stage);
+  stageRef.current = props.stage;
   const feedRef = useRef<HeadFeed | null>(null);
   // the syllable at the mouth, written on the side the face looks to
   const overlayRef = useRef<OverlayFn | undefined>(undefined);
@@ -264,6 +291,7 @@ function Head(props: { name: string; track: TeleTrack; words: SungWords | null; 
       maxDpr: 1.5,
       facing: props.facing,
       look: props.look,
+      hidden: () => stageRef.current === " waiting",
       frame: () => {
         const t = transport.time();
         const i = track.indexAt(t);
