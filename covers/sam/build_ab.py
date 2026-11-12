@@ -119,9 +119,10 @@ def main():
         if os.path.exists(f"{BUILD}/sam-{v}.wav"):
             place(t, librosa.load(f"{BUILD}/sam-{v}.wav", sr=SR)[0], 0.0)
         for s in mine(v, "SPOKEN"):
-            # a hand-set line is spoken where its head speaks it (its words' times are the aligner's
-            # guess, which can sit on another singer's held note)
-            ws = [] if s["line"] in HAND else [w for w in words if w["line"] == s["line"]]
+            # a hand-set line is spoken where its head speaks it, word by word (the aligner's word
+            # times can sit on another singer's held note)
+            ws = ([{"word": tok, "start": a, "end": a + d} for a, d, _, tok in HAND[s["line"]] if tok] if s["line"] in HAND
+                  else [w for w in words if w["line"] == s["line"]])
             for w in ws or [{"word": s["text"], "start": s["start"], "end": s["end"]}]:
                 place(t, 0.8 * say(w["word"], w["end"] - w["start"]), w["start"])
         tracks[v] = t

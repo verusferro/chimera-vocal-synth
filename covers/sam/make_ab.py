@@ -48,7 +48,9 @@ MINOR = (0, 2, 3, 5, 7, 8, 10)  # natural minor, from the tonic
 # laughs and "Oh." have no GAME notes.
 HAND = {
     47: [(103.3, 0.2, "C4", "ha"), (103.55, 0.2, "C4", "ha"), (103.8, 0.3, "C4", "ha")],
-    66: [(136.45, 0.7, "C4", "Oh")],  # the video shows Caine's face 136.4-137.3, then the chorus's "AH" at 137.4
+    # the video shows Caine's face 136.4-137.3 ("Oh."), then his laugh "HAH" 137.4-137.9; the
+    # chorus's "ARTIST" comes at 138.0. Genius leaves the laugh out
+    66: [(136.45, 0.7, "C4", "Oh"), (137.4, 0.5, "C4", "Hah")],
     71: [(154.0, 0.5, "A#3", "No"), (154.5, 1.5, "A#3", "more"), (156.0, 1.5, "B3", "crying"), (157.5, 0.5, "A#3", "")],
     72: [(158.0, 0.5, "D#3", "No"), (158.5, 0.75, "G#3", "use"), (159.25, 1.0, "G#3", "trying"), (160.25, 1.25, "F#3", "")],
     73: [(162.0, 0.5, "D#4", "Digital"), (162.5, 0.5, "D#4", ""), (163.0, 0.75, "C#4", ""), (163.75, 1.0, "F4", "landscape"), (164.75, 1.0, "D#4", "")],
@@ -85,10 +87,15 @@ def refine(ev, f0, rate):
         v = v[~np.isnan(v)]
         raw.append(12 * np.log2(np.median(v) / 440) + 69 if len(v) else float(e[2]))
     med = float(np.median(raw))
-    out = []
+    out, prev = [], med
     for e, t0, m in zip(ev, t, raw):
-        if abs(m - med) > 7:
-            m += 12 * round((med - m) / 12)
+        # an octave error (or a voice effect's subharmonic) is a jump of about 12 from the note
+        # before; a sung leap past 9 is rare. Against the line's median instead, the falling
+        # "Artist bloooock" of the chorus (7 under it) and the 3:06 "block" that RMVPE heard 13
+        # under its "Artist" could not be told apart
+        if abs(m - prev) > 9:
+            m += 12 * round((prev - m) / 12)
+        prev = m
         out.append([e[0], e[1], snap(m, 4 if t0 >= OUTRO else 3), e[3], e[4]])
     return out
 

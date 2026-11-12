@@ -48,17 +48,17 @@ class WhisperGuidedFix(unittest.TestCase):
         self.assertEqual(words[1]["start"], 20.5)
         self.assertAlmostEqual(words[1]["end"], 22.3, places=2)
 
-    def test_a_word_takes_the_stems_sound_around_it(self):
-        # the stem sounds 137.85-139.6; the aligner heard "artist" at 138.36 and "block" to 139.44:
-        # the held first vowel and the held last one belong to the words
-        words = [word("artist", 138.36, 138.8), word("block", 138.9, 139.44), word("my", 140.5, 140.8)]
+    def test_whisper_late_on_a_held_vowel_and_a_held_last_word(self):
+        # the stem sounds 137.4-139.6 (a laugh, then "aaartist block"); the aligner has "artist" at
+        # 138.0, Whisper at 138.36 (late, on the held vowel): the aligner's start stays, a sound
+        # before the word is not taken (the laugh), and the held end of "block" is the word's
+        words = [word("artist", 138.0, 138.8), word("block", 138.9, 139.44), word("my", 140.5, 140.8)]
         wh = [{"w": " artist", "s": 138.36, "e": 138.8}, {"w": " block", "s": 138.9, "e": 139.4}, {"w": " my", "s": 140.5, "e": 140.8}]
-        voiced = [False] * 13785 + [True] * 175 + [False] * 90 + [True] * 30 + [False] * 300
+        voiced = [False] * 13740 + [True] * 220 + [False] * 90 + [True] * 30 + [False] * 300
         fix(words, wh, voiced=voiced)
-        self.assertEqual(words[0]["start"], 137.85)
-        self.assertEqual(words[0]["phones"][0]["start"], 137.85)
+        self.assertEqual(words[0]["start"], 138.0)
         self.assertEqual(words[1]["end"], 139.6)
-        self.assertEqual(words[2]["start"], 140.5)  # its sound starts with it: unchanged
+        self.assertEqual(words[2]["start"], 140.5)
 
 
 if __name__ == "__main__":

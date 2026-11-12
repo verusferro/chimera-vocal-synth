@@ -93,6 +93,11 @@ def fix(words, wh, win=None, voiced=None):
 
     for i, x in pairs.items():
         w = words[i]
+        # Whisper later than the aligner, but under 0.8 s, with the stem sounding all the way
+        # between: Whisper heard the word late on a held first vowel ("Aaartist"); the aligner's
+        # start stays (seconds apart is the aligner's error on a busy stem: that still moves)
+        if voiced is not None and 0 < x["s"] - w["start"] < 0.8 and heard_until(w["start"], x["s"]) >= x["s"] - 0.02:
+            continue
         if abs(w["start"] - x["s"]) > OFF:
             # Whisper's word ends are rough and short on a held note: the word keeps the aligner's
             # length while the stem still sounds
@@ -126,17 +131,10 @@ def fix(words, wh, win=None, voiced=None):
             move(w, w["start"], max(nxt["start"], w["start"] + 0.02))
     if voiced is not None:
         for i, w in enumerate(words):
-            prev_end = words[i - 1]["end"] if i else 0.0
             nxt = words[i + 1]["start"] if i + 1 < len(words) else w["end"] + 1.0
-            # a sound that began after the last word and runs into this one is this word's start
-            # (a held first vowel, a pickup: the aligner often hears the word late)
-            k = j = int(w["start"] * 100)
-            while 0 < j <= len(voiced) and voiced[j - 1]:
-                j -= 1
-            if k < len(voiced) and voiced[k] and j > 0 and j / 100 > prev_end and 0.1 < w["start"] - j / 100 <= 0.8:
-                w["start"] = w["phones"][0]["start"] = round(j / 100, 3)
-            # and the stem still sounding after the word, up to the next one (at most 1 s more), is
-            # the word held on: its last phone takes it
+            # the stem still sounding after the word, up to the next one (at most 1 s more), is the
+            # word held on: its last phone takes it. (Its start is left alone: a sound before a
+            # word is as often a laugh or an effect as the word's own first vowel)
             e = heard_until(w["end"], min(nxt, w["end"] + 1.0))
             if e > w["end"] + 0.05:
                 w["end"] = w["phones"][-1]["end"] = round(e, 3)

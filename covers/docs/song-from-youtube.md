@@ -266,7 +266,11 @@ word keeps the aligner's length while the stem still sounds (Whisper's word ends
 held note). Words between two matched words that fell outside them follow the earlier one in the
 aligner's proportions, squeezed into the room there is, so a held word stays the longest. An
 unmatched word the aligner held over 1.2 s keeps only its last 0.6 s, unless the stem sounds
-through it: then it is a held note and stays.
+through it: then it is a held note and stays. A word Whisper puts less than 0.8 s after the
+aligner, with the stem sounding all the way between, keeps the aligner's start: Whisper hears a
+held first vowel late ("Aaartist" in *ARTIST BLOCK*). Last, a word whose sound goes on after it
+(up to the next word, at most 1 s) is held to there. A sound *before* a word is left alone: in
+*ARTIST BLOCK* it was Caine's laugh or a glitch effect, and taking it moved "Artist" early.
 Two guards keep a wrong match from moving good words: a Whisper word outside the region that
 `hfa/regions.json` gives its line is ignored, and when two matches leave the lyric words between
 them no room (under 0.12 s a word), the one further from the aligner's time is dropped. Without

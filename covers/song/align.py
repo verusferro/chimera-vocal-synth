@@ -113,8 +113,10 @@ def build_line(notes, words, t_next):
         tok = s["word"] if s["first"] else None  # the engine splits a word into its syllables itself
         if not idx:  # no note of its own: it splits the note sounding at its vowel
             host = next((e for e in ev if e[0] <= s["t"] < e[1]), ev[-1] if ev else None)
-            if host is None:
-                ev.append([s["t"], s["t"] + BEAT / 2, mine[0][2] if mine else 60, tok, s["label"] + "?"])
+            if host is None or s["t"] >= host[1]:
+                # no note sounds at its vowel: a note of its own there, at the last pitch (the
+                # syllable lengths below give it its length)
+                ev.append([s["t"], s["t"] + BEAT / 2, host[2] if host else mine[0][2] if mine else 60, tok, s["label"] + "?"])
                 who.append(i)
                 continue
             cut = s["t"] if host[0] + 0.1 < s["t"] < host[1] - 0.1 else (host[0] + host[1]) / 2
