@@ -2,12 +2,13 @@
 
 This page shows how we made CHIMERA's heads move while a different voice sings. The voice is **S.A.M.**, played through a UTAU voicebank. CHIMERA does not make the sound. It only makes the mouth movement.
 
-We built two shows this way:
+We built three shows this way:
 
 | Show | What it is |
 |------|------------|
 | `artist-block` | St4tic "ARTIST BLOCK". Seven roles, one head per role: V1 plays Caine, the six guests keep CHIMERA's own head. S.A.M. sings and speaks every role. |
 | `switch-off-v1` | The "Switch Off The Game" cover, but V1 (S.A.M.) sings the World Machine part. Niko stays CHIMERA's own child voice. |
+| `artist-block-reprise-v1` | St4tic "ARTIST BLOCK: REPRISE", made with `v1_cover.py` from the regular `artist-block-reprise` show. V1 plays Caine; Bubble keeps CHIMERA's own head. |
 
 Run all commands from the repo root. Setup of the tools is in [setup.md](setup.md). How the song data (stems, notes, words) is made is in [song-from-youtube.md](song-from-youtube.md). How the V1 and Niko heads look is in [wireframe-heads.md](wireframe-heads.md).
 
@@ -208,6 +209,37 @@ This is the short path. It needs no new analysis. The song already exists as CHI
 6. Writes `public/shows/switch-off-v1/`. The video is copied from the `switch-off` show. Niko enters at 179 s.
 
 Only the V1 part changes. The song and Niko keep their original pitch. That is why this show uses an octave shift and not a whole-song transpose.
+
+## `v1_cover.py`: a V1 version of any `cover.py` show
+
+```bash
+COVERS_WORK=$PWD/covers/work/<song> .venv/bin/python covers/song/cover.py      # the regular show first
+COVERS_WORK=$PWD/covers/work/<song> .venv/bin/python covers/sam/v1_cover.py    # then <id>-v1
+```
+
+It needs a `v1` block in the song's `cover.json`:
+
+```json
+"v1": {"title": "ARTIST BLOCK: REPRISE (St4tic) - V1 / S.A.M. cover", "transpose": -3, "spoken": [[1, 5], [41, 41]], "voice": 0}
+```
+
+It takes the regular show's melodies (`public/shows/<id>/v<i>.json`), so every fix made there
+(`hand`, `fold`, the repitch and the holds) carries over. Then it does what `build_ab.py` does,
+without the hand tables:
+
+1. Moves every melody by `transpose` and renders it with CHIMERA for the head (`--tele`) and the
+   syllables (`--syllables`).
+2. Sends the syllables outside the `spoken` lines (1-based inclusive ranges) to `sam_render.py`
+   at the song's BPM.
+3. Says the `spoken` lines with the S.A.M. TTS, word by word on the aligner's times (`say()` from
+   `build_ab.py`).
+4. Moves the `other` stem by `transpose` (Rubber Band, cached as `build-v1/other<T>.wav`) and
+   mixes at the original vocal-to-backing balance plus `LIFT_DB`.
+5. Writes `public/shows/<id>-v1/`: the head number `voice` wears V1 (`"V1 as <name>"`), the others
+   keep their looks and their `on` windows.
+
+Pick `transpose` as in the pitch lessons below. In *ARTIST BLOCK: REPRISE* Caine's notes have a
+median of F3 (175 Hz); `-3` puts it at D3 (147 Hz).
 
 ## `measure.py`: quality check
 

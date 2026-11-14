@@ -39,5 +39,21 @@ class Hold(unittest.TestCase):
         self.assertEqual(other_pitch[0][1], 1.0)  # the stem holds another pitch: no hold
 
 
+class Fold(unittest.TestCase):
+    def test_octave_errors_fold_but_real_leaps_and_high_lines_stay(self):
+        notes = lambda ps: [[i, i + 1, p, None, "x"] for i, p in enumerate(ps)]  # noqa: E731
+        fold = lambda ps: [e[2] for e in cover.fold(notes(ps), 7)]  # noqa: E731
+        self.assertEqual(fold([53, 54, 78, 53]), [53, 54, 54, 53])  # two octaves up: back
+        self.assertEqual(fold([58, 57, 50]), [58, 57, 50])  # a sung fall of a fifth
+        # a high line's low note 9 off: folding it up would take it away from the line, so it stays
+        self.assertEqual(fold([63, 70, 66, 72, 63, 57]), [63, 70, 66, 72, 63, 57])
+
+
+class TrimTail(unittest.TestCase):
+    def test_the_last_words_later_syllables_stay_and_a_stray_note_goes(self):
+        ev = [[0, 1, 53, "me", "me"], [1, 2, 56, "away", "away.1"], [2, 4, 60, None, "away.2"], [4, 5, 70, "-", "-"]]
+        self.assertEqual([e[4] for e in cover.trim_tail(ev)], ["me", "away.1", "away.2"])
+
+
 if __name__ == "__main__":
     unittest.main()

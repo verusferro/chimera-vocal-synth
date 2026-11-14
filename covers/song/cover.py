@@ -15,6 +15,9 @@ replaces a line's notes ("" token = the word's next syllable). It reads WORK/gam
 --pitch-format number), WORK/hfa/words.json, WORK/stems/*(vocals)* and *(other)*, WORK/video.mp4.
 --show prints every line's syllables on their notes. Writes WORK/build/ and public/shows/<id>/.
 `grid` (beats, default 0.25): use 0.125 for a song whose tempo drifts; the grid then only rounds.
+`fold` (semitones, e.g. 7): a note that jumps more than this from the note before moves by whole
+octaves next to it (GAME's and the stem's octave errors; real leaps that wide are rare in the song).
+`spell` ({"ay": "A"}): goes to show.json, so a syllable spelled for the dictionaries reads right.
 `"notes": "f0"`: take each syllable's pitch from the vocal stem's f0 instead of GAME's notes
 (better for rapped or half-spoken songs, where GAME finds few notes).
 """
@@ -48,7 +51,8 @@ def hand(rows):
 def trim_tail(ev):
     """a line's held last syllable keeps only the notes near its pitch within a beat: the rest is
     ad-libs and backing voices that the vocal stem still holds"""
-    last = max(i for i, e in enumerate(ev) if e[3] and e[3] != "-")
+    # the last syllable, not the last word's first one (whose later syllables have no token)
+    last = max(i for i, e in enumerate(ev) if e[4] != "-")
     keep = ev[: last + 1]
     for e in ev[last + 1:]:
         if e[0] - ev[last][0] >= 1.0 or abs(e[2] - ev[last][2]) > 2:
@@ -96,6 +100,21 @@ def repitch(ev, mid, tune):
             continue
         p = round(float(np.median(v)) - tune)
         e[2] = p + 12 * round((e[2] - p) / 12)
+    return ev
+
+
+def fold(ev, leap):
+    """octave errors (GAME's or the stem's): a note more than `leap` semitones from the note before
+    moves by whole octaves next to it, if that also brings it nearer the line's median (so one
+    wrong note can't carry the rest of the line off by octaves); a sung leap that wide is rare, an
+    octave error is a jump of about 12 (the rule of sam/make_ab.py's refine())"""
+    med = float(np.median([e[2] for e in ev]))
+    prev = med
+    for e in ev:
+        m = e[2] + 12 * round((prev - e[2]) / 12)
+        if abs(e[2] - prev) > leap and abs(m - med) < abs(e[2] - med):
+            e[2] = m
+        prev = e[2]
     return ev
 
 
@@ -170,6 +189,8 @@ def melodies(cfg):
     else:
         res = align.build(align.load_notes(f"{WORK}/game/vocals.txt"), words)
     res = {ln: trim_tail(repitch(ev, mid, tune)) for ln, ev in res.items()}
+    if "fold" in cfg:
+        res = {ln: fold(ev, cfg["fold"]) for ln, ev in res.items()}
     res.update({int(ln): hand(rows) for ln, rows in cfg.get("hand", {}).items()})
     starts = sorted(e[0] for ev in res.values() for e in ev)
     out = []
@@ -253,6 +274,7 @@ def main():
     def ver(f):
         return f"{f}?v={hashlib.md5(open(f'{show}/{f}', 'rb').read()).hexdigest()[:8]}"
     out = {"title": cfg["title"], "audio": ver("mix.mp3"), "backing": ver("backing.mp3"), "bpm": align.BPM, "downbeat": align.T0,
+           **({"spell": cfg["spell"]} if "spell" in cfg else {}),
            "voices": [{"name": v["name"], "tele": ver(f"v{i}.tele"), "melody": ver(f"v{i}.json"),
                        **({"look": v["look"]} if "look" in v else {}), **({"on": on} if (on := on_screen(v)) else {})}
                       for i, v in enumerate(cfg["voices"])]}

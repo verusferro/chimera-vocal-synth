@@ -471,12 +471,24 @@ This takes one pitch per aligned syllable from the stem's RMVPE pitch. It folds 
 octave jumps toward the range of the line's own singer (a choir line stays high, the lead's lines
 stay low). It is not a separator: lines two singers sing at once still come out as one pitch.
 Set `"grid": 0.125` for a drifting live tempo; timing is rounded to that finer grid.
+Set `"fold": 7` when GAME and the stem jump octaves inside lines (a stem with a double an octave
+up, a shouted line): a note more than 7 semitones from the note before moves by whole octaves next
+to it, but only if that also brings it nearer the line's median, so one wrong note does not carry
+the rest of the line off. Without that last check, in *ARTIST BLOCK: REPRISE* "I suppose that's
+more accurately" (a high line, D#4 to C5) climbed to A5.
+`"spell": {"ay": "A"}` goes into `show.json`: a word written for the dictionaries ("AI's" sung as
+"Ay I's") reads right at the mouth.
 
 If HubertFA skips an unknown word, create `hfa/respell.json`, for example
 `{"rumba": "rumble", "chicky": "cheeky"}`. Each replacement must be one dictionary word.
 Only the alignment spelling changes; CHIMERA still sings the original word.
 
 We made the `despicable-me` show this way, with the published lyrics (LyricFind, via Songfacts).
+
+For a V1 (S.A.M.) version of the same song, add a `v1` block and run `covers/sam/v1_cover.py`
+after `cover.py`: see [sam-singing.md](sam-singing.md). *ARTIST BLOCK: REPRISE* has both
+(`artist-block-reprise`, `artist-block-reprise-v1`), with the lyrics from St4tic's own video
+description and the lyric video (Bubble's lines in the intro, the closing "Wait").
 
 ## Known limits
 
